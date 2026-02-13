@@ -1,0 +1,11 @@
+[
+  {
+    "id": "default",
+    "name": "Main Account",
+    "broker": "",
+    "currency": "USD",
+    "balance": 10000,
+    "color": "#00d4ff",
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  }
+]

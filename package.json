@@ -1,5 +1,5 @@
 {
-	"name": "fxjournal",
+	"name": "fx",
 	"private": true,
 	"version": "0.0.1",
 	"type": "module",
@@ -45,9 +45,6 @@
 		"vite": "^7.3.1"
 	},
 	"dependencies": {
-		"better-sqlite3": "^12.6.2",
-		"clsx": "^2.1.1",
-		"lucide-svelte": "^0.564.0",
-		"tailwind-merge": "^3.4.0"
+		"better-sqlite3": "^12.6.2"
 	}
 }

@@ -2,7 +2,7 @@
 <script>
   import { onMount } from 'svelte';
   import { initializeData, isLoading } from '$lib/stores/api';
-  import '../app.css';
+  import "../app.css"
 
   onMount(() => {
     initializeData();
