@@ -23,8 +23,13 @@ export const POST: RequestHandler = async ({ request }) => {
     const existingIndex = accounts.findIndex((a: any) => a.id === account.id);
     
     if (existingIndex !== -1) {
+      // If updating, preserve initialBalance if not provided
+      const existing = accounts[existingIndex];
+      account.initialBalance = account.initialBalance ?? existing.initialBalance ?? account.balance;
       accounts[existingIndex] = account;
     } else {
+      // New account: set initialBalance to starting balance
+      account.initialBalance = account.initialBalance ?? account.balance;
       accounts.push(account);
     }
     

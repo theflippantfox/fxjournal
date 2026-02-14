@@ -3,6 +3,25 @@ import { json } from '@sveltejs/kit';
 import { storage } from '$lib/server/storage';
 import type { RequestHandler } from './$types';
 
+async function syncAccountBalance(accountId: string) {
+  const trades = await storage.getTrades();
+  const accounts = await storage.getAccounts();
+  const accountIndex = accounts.findIndex((a: any) => a.id === accountId);
+  
+  if (accountIndex !== -1) {
+    const account = accounts[accountIndex];
+    const accountTrades = trades.filter((t: any) => t.accountId === accountId);
+    const totalPnl = accountTrades.reduce((sum: number, t: any) => sum + (t.pnl || 0), 0);
+    
+    // Update balance: Initial Balance + Total P&L
+    // We assume the user might have an initial balance set
+    const initialBalance = account.initialBalance || 0;
+    account.balance = initialBalance + totalPnl;
+    
+    await storage.saveAccounts(accounts);
+  }
+}
+
 // GET all trades
 export const GET: RequestHandler = async () => {
   try {
@@ -23,14 +42,18 @@ export const POST: RequestHandler = async ({ request }) => {
     const existingIndex = trades.findIndex((t: any) => t.id === trade.id);
     
     if (existingIndex !== -1) {
-      // Update existing trade
       trades[existingIndex] = trade;
     } else {
-      // Add new trade
       trades.push(trade);
     }
     
     await storage.saveTrades(trades);
+    
+    // Sync account balance
+    if (trade.accountId) {
+      await syncAccountBalance(trade.accountId);
+    }
+    
     return json({ success: true, trade });
   } catch (error) {
     console.error('Error saving trade:', error);
@@ -47,9 +70,16 @@ export const DELETE: RequestHandler = async ({ url }) => {
     }
     
     const trades = await storage.getTrades();
+    const tradeToDelete = trades.find((t: any) => t.id === id);
     const filteredTrades = trades.filter((t: any) => t.id !== id);
     
     await storage.saveTrades(filteredTrades);
+    
+    // Sync account balance
+    if (tradeToDelete && tradeToDelete.accountId) {
+      await syncAccountBalance(tradeToDelete.accountId);
+    }
+    
     return json({ success: true });
   } catch (error) {
     console.error('Error deleting trade:', error);

@@ -61,6 +61,7 @@ export const storage = {
         broker: '',
         currency: 'USD',
         balance: 10000,
+        initialBalance: 10000,
         color: '#00d4ff',
         createdAt: new Date().toISOString()
       }
