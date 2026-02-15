@@ -1,0 +1,21 @@
+[
+  {
+    "accountId": "1771181144219",
+    "symbol": "BTCUSDT.P",
+    "type": "long",
+    "entryPrice": 69770.3,
+    "exitPrice": 69770.3,
+    "quantity": 0.5,
+    "entryDate": "2026-02-15T00:00:00.000Z",
+    "exitDate": "2026-02-15T00:00:00.000Z",
+    "pnl": 0,
+    "pnlPercentage": 0,
+    "fees": 0,
+    "notes": "",
+    "tags": [],
+    "setup": "",
+    "emotion": "neutral",
+    "mistakes": "",
+    "id": "1771181241472"
+  }
+]

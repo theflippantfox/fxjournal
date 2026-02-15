@@ -1,108 +1,283 @@
-<!-- src/routes/analytics/+page.svelte -->
-<script>
-  import { onMount, onDestroy } from 'svelte';
-  import { tradesByAccount, activeAccount, calcStats, fmt, fmtPct } from '$lib/stores/api';
-  import StatCard from '$lib/components/StatCard.svelte';
-  import { chartDefaults, Chart } from '$lib/utils/charts';
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { selectedAccountId } from '$lib/stores';
+	import { formatCurrency, calculateAnalytics } from '$lib/utils/analytics';
+	import { TrendingUp, Target, Award, BarChart3 } from 'lucide-svelte';
+	import type { Trade } from '$lib/types';
 
-  let charts = {};
+	let trades = $state<Trade[]>([]);
+	let analytics = $state<any>(null);
+	let loading = $state(true);
 
-  $: trades = $tradesByAccount.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
-  $: stats  = calcStats(trades);
+	$effect(() => {
+		loadData($selectedAccountId);
+	});
 
-  onMount(() => {
-    drawAll();
-  });
+	async function loadData(accountId: string) {
+		if (!accountId) return;
+		
+		loading = true;
+		try {
+			const res = await fetch(`/api/trades?accountId=${accountId}`);
+			trades = await res.json();
+			analytics = calculateAnalytics(trades);
+		} catch (error) {
+			console.error('Error loading data:', error);
+		} finally {
+			loading = false;
+		}
+	}
 
-  onDestroy(() => Object.values(charts).forEach(c => c?.destroy()));
-  
-  $: if (trades && trades.length > 0) {
-    setTimeout(drawAll, 0);
-  }
+	const topSymbols = $derived(
+		analytics ? Object.entries(analytics.tradesBySymbol)
+			.sort(([, a]: any, [, b]: any) => b - a)
+			.slice(0, 5) : []
+	);
 
-  function destroyAll() { 
-    Object.values(charts).forEach(c => c?.destroy());
-    charts = {};
-  }
-
-  function drawAll() {
-    if (typeof document === 'undefined') return;
-    destroyAll();
-    if (!trades.length) return;
-
-    // Monthly P&L
-    const monthMap = {};
-    trades.forEach(t => { const m = t.date.slice(0,7); monthMap[m] = (monthMap[m]||0) + t.pnl; });
-    const months = Object.keys(monthMap).sort();
-    mkBar('monthlyChart', months, months.map(m => monthMap[m]), v => v >= 0 ? 'rgba(0,200,150,0.7)' : 'rgba(255,77,109,0.7)');
-
-    // Session
-    const sessMap = {};
-    trades.forEach(t => { const s = t.session || 'Unknown'; sessMap[s] = (sessMap[s]||0) + t.pnl; });
-    mkBar('sessionChart', Object.keys(sessMap), Object.values(sessMap), 'rgba(0,212,255,0.6)');
-
-    // Drawdown
-    let eq=0, pk=0, dds=[];
-    trades.forEach(t => { eq+=t.pnl; if(eq>pk)pk=eq; dds.push(-(pk-eq)); });
-    const ddc = document.getElementById('drawdownChart');
-    if (ddc) charts.dd = new Chart(ddc, {
-      type: 'line',
-      data: {
-        labels: trades.map(t=>t.date),
-        datasets: [{
-          label: 'Drawdown ($)',
-          data: dds,
-          borderColor: 'rgba(255,77,109,0.8)',
-          backgroundColor: 'rgba(255,77,109,0.1)',
-          fill: true,
-          tension: 0.3,
-          pointRadius: 0
-        }]
-      },
-      options: chartDefaults('line')
-    });
-  }
-
-  function mkBar(id, labels, data, color) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const colors = typeof color === 'function' ? data.map(color) : color;
-    charts[id] = new Chart(el, {
-      type: 'bar',
-      data: { labels, datasets: [{ data, backgroundColor: colors, borderRadius: 4 }] },
-      options: { ...chartDefaults('bar'), plugins: { ...chartDefaults('bar').plugins, legend: { display: false } } }
-    });
-  }
+	const setupPerformance = $derived(
+		analytics ? Object.entries(analytics.tradesBySetup)
+			.map(([setup, count]) => ({
+				setup,
+				count,
+				winRate: analytics.winRateBySetup[setup] || 0
+			}))
+			.sort((a: any, b: any) => b.count - a.count) : []
+	);
 </script>
 
-<div class="page-header">
-  <h2>Analytics</h2>
-  <p>Performance breakdown for <strong>{$activeAccount?.name}</strong></p>
+<svelte:head>
+	<title>Analytics - TradeJournal</title>
+</svelte:head>
+
+<div class="p-8">
+	{#if loading}
+		<div class="flex items-center justify-center h-64">
+			<div class="text-gray-500">Loading...</div>
+		</div>
+	{:else if !analytics}
+		<div class="text-center py-12 text-gray-500">
+			No data available. Start adding trades to see analytics.
+		</div>
+	{:else}
+		<!-- Header -->
+		<div class="mb-8">
+			<h1 class="text-3xl font-bold text-gray-900 mb-2">Analytics</h1>
+			<p class="text-gray-600">Detailed performance analysis</p>
+		</div>
+
+		<!-- Key Metrics -->
+		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+			<div class="card">
+				<div class="flex items-center justify-between mb-2">
+					<span class="text-sm text-gray-600">Total Trades</span>
+					<BarChart3 class="w-5 h-5 text-gray-400" />
+				</div>
+				<div class="text-2xl font-bold text-gray-900">
+					{analytics.totalTrades}
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="flex items-center justify-between mb-2">
+					<span class="text-sm text-gray-600">Win Rate</span>
+					<Target class="w-5 h-5 text-gray-400" />
+				</div>
+				<div class="text-2xl font-bold text-gray-900">
+					{analytics.winRate.toFixed(1)}%
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="flex items-center justify-between mb-2">
+					<span class="text-sm text-gray-600">Profit Factor</span>
+					<TrendingUp class="w-5 h-5 text-gray-400" />
+				</div>
+				<div class="text-2xl font-bold text-gray-900">
+					{analytics.profitFactor === Infinity ? '∞' : analytics.profitFactor.toFixed(2)}
+				</div>
+			</div>
+
+			<div class="card">
+				<div class="flex items-center justify-between mb-2">
+					<span class="text-sm text-gray-600">Expectancy</span>
+					<Award class="w-5 h-5 text-gray-400" />
+				</div>
+				<div class="text-2xl font-bold text-gray-900">
+					{formatCurrency(analytics.expectancy)}
+				</div>
+			</div>
+		</div>
+
+		<!-- Performance Details -->
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+			<!-- Win/Loss Analysis -->
+			<div class="card">
+				<h3 class="text-lg font-semibold text-gray-900 mb-4">Win/Loss Analysis</h3>
+				<div class="space-y-4">
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Average Win</span>
+						<span class="font-semibold text-profit">
+							{formatCurrency(analytics.averageWin)}
+						</span>
+					</div>
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Average Loss</span>
+						<span class="font-semibold text-loss">
+							{formatCurrency(analytics.averageLoss)}
+						</span>
+					</div>
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Best Trade</span>
+						<div class="text-right">
+							<div class="font-semibold text-profit">
+								{formatCurrency(analytics.bestTrade?.pnl || 0)}
+							</div>
+							<div class="text-xs text-gray-500">
+								{analytics.bestTrade?.symbol || '-'}
+							</div>
+						</div>
+					</div>
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Worst Trade</span>
+						<div class="text-right">
+							<div class="font-semibold text-loss">
+								{formatCurrency(analytics.worstTrade?.pnl || 0)}
+							</div>
+							<div class="text-xs text-gray-500">
+								{analytics.worstTrade?.symbol || '-'}
+							</div>
+						</div>
+					</div>
+					<div class="flex justify-between items-center pt-4 border-t border-gray-200">
+						<span class="text-gray-600">Risk/Reward Ratio</span>
+						<span class="font-semibold text-gray-900">
+							{analytics.averageLoss > 0 
+								? (analytics.averageWin / analytics.averageLoss).toFixed(2) 
+								: 'N/A'}
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<!-- Streaks -->
+			<div class="card">
+				<h3 class="text-lg font-semibold text-gray-900 mb-4">Streaks & Consistency</h3>
+				<div class="space-y-4">
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Max Consecutive Wins</span>
+						<span class="font-semibold text-profit">
+							{analytics.consecutiveWins}
+						</span>
+					</div>
+					<div class="flex justify-between items-center">
+						<span class="text-gray-600">Max Consecutive Losses</span>
+						<span class="font-semibold text-loss">
+							{analytics.consecutiveLosses}
+						</span>
+					</div>
+					<div class="flex justify-between items-center pt-4 border-t border-gray-200">
+						<span class="text-gray-600">Total P&L</span>
+						<span class="font-semibold {analytics.totalPnl >= 0 ? 'text-profit' : 'text-loss'}">
+							{formatCurrency(analytics.totalPnl)}
+						</span>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Top Symbols -->
+		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+			<div class="card">
+				<h3 class="text-lg font-semibold text-gray-900 mb-4">Most Traded Symbols</h3>
+				{#if topSymbols.length === 0}
+					<p class="text-gray-500">No data available</p>
+				{:else}
+					<div class="space-y-3">
+						{#each topSymbols as [symbol, count]}
+							<div class="flex items-center justify-between">
+								<div class="flex items-center gap-3">
+									<span class="font-medium text-gray-900">{symbol}</span>
+								</div>
+								<div class="flex items-center gap-3">
+									<div class="w-32 bg-gray-200 rounded-full h-2">
+										<div
+											class="bg-primary-600 h-2 rounded-full"
+											style="width: {(count / topSymbols[0][1]) * 100}%"
+										></div>
+									</div>
+									<span class="text-sm text-gray-600 w-12 text-right">{count} trades</span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Setup Performance -->
+			<div class="card">
+				<h3 class="text-lg font-semibold text-gray-900 mb-4">Setup Performance</h3>
+				{#if setupPerformance.length === 0}
+					<p class="text-gray-500">No setup data available</p>
+				{:else}
+					<div class="space-y-3">
+						{#each setupPerformance as item}
+							<div class="flex items-center justify-between">
+								<div class="flex flex-col">
+									<span class="font-medium text-gray-900">{item.setup || 'No Setup'}</span>
+									<span class="text-xs text-gray-500">{item.count} trades</span>
+								</div>
+								<div class="text-right">
+									<span class="font-semibold {item.winRate >= 50 ? 'text-profit' : 'text-loss'}">
+										{item.winRate.toFixed(1)}%
+									</span>
+									<div class="text-xs text-gray-500">win rate</div>
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</div>
+
+		<!-- P&L Chart -->
+		<div class="card">
+			<h3 class="text-lg font-semibold text-gray-900 mb-4">P&L Over Time</h3>
+			{#if analytics.pnlByDay.length === 0}
+				<p class="text-gray-500">No data available</p>
+			{:else}
+				<div class="space-y-2">
+					{#each analytics.pnlByDay as day}
+						<div class="flex items-center gap-4">
+							<span class="text-sm text-gray-600 w-24">
+								{new Date(day.date).toLocaleDateString()}
+							</span>
+							<div class="flex-1 flex items-center gap-2">
+								<div class="flex-1 bg-gray-200 rounded-full h-6 overflow-hidden">
+									{#if day.pnl >= 0}
+										<div
+											class="bg-profit h-6 rounded-full flex items-center justify-end pr-2"
+											style="width: {Math.min((day.pnl / Math.max(...analytics.pnlByDay.map((d: any) => Math.abs(d.pnl)))) * 100, 100)}%"
+										>
+											<span class="text-xs text-white font-medium">
+												{formatCurrency(day.pnl)}
+											</span>
+										</div>
+									{:else}
+										<div
+											class="bg-loss h-6 rounded-full flex items-center justify-end pr-2"
+											style="width: {Math.min((Math.abs(day.pnl) / Math.max(...analytics.pnlByDay.map((d: any) => Math.abs(d.pnl)))) * 100, 100)}%"
+										>
+											<span class="text-xs text-white font-medium">
+												{formatCurrency(day.pnl)}
+											</span>
+										</div>
+									{/if}
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
 </div>
-
-{#if !stats}
-  <div class="card" style="text-align:center;padding:60px;color:var(--muted);">No trades to analyze yet.</div>
-{:else}
-  <div class="stats-grid">
-    <StatCard label="Profit Factor" value={stats.profitFactor?.toFixed(2)} color="neutral" />
-    <StatCard label="Win Rate" value={fmtPct(stats.winRate)} color="positive" />
-    <StatCard label="Avg Win" value={fmt(stats.avgWin)} color="positive" />
-    <StatCard label="Avg Loss" value={fmt(stats.avgLoss)} color="negative" />
-  </div>
-
-  <div class="grid-2">
-    <div class="card">
-      <div class="card-title">Monthly P&L</div>
-      <div style="height:280px;position:relative;"><canvas id="monthlyChart"></canvas></div>
-    </div>
-    <div class="card">
-      <div class="card-title">P&L by Session</div>
-      <div style="height:280px;position:relative;"><canvas id="sessionChart"></canvas></div>
-    </div>
-  </div>
-
-  <div class="card full-width">
-    <div class="card-title">Drawdown Chart</div>
-    <div style="height:280px;position:relative;"><canvas id="drawdownChart"></canvas></div>
-  </div>
-{/if}

@@ -1,146 +1,139 @@
-<!-- src/routes/+layout.svelte -->
-<script>
-  import { onMount } from 'svelte';
-  import { initializeData, isLoading } from '$lib/stores/api';
-  import Sidebar from '$lib/components/Sidebar.svelte';
-  import "../app.css"
+<script lang="ts">
+	import './layout.css';
+	import { page } from '$app/stores';
+	import { selectedAccountId, accounts } from '$lib/stores';
+	import { onMount } from 'svelte';
+	import { 
+		LayoutDashboard, 
+		BookOpen, 
+		BarChart3, 
+		Settings, 
+		TrendingUp,
+		ChevronDown 
+	} from 'lucide-svelte';
 
-  let isMobileMenuOpen = false;
+	let showAccountDropdown = $state(false);
+	let currentAccounts = $state<any[]>([]);
+	let currentSelectedId = $state('');
 
-  onMount(() => {
-    initializeData();
-  });
+	onMount(async () => {
+		const res = await fetch('/api/accounts');
+		const data = await res.json();
+		accounts.set(data);
+		currentAccounts = data;
+		
+		if (data.length > 0 && !currentSelectedId) {
+			selectedAccountId.set(data[0].id);
+			currentSelectedId = data[0].id;
+		}
+	});
 
-  function toggleMobileMenu() {
-    isMobileMenuOpen = !isMobileMenuOpen;
-  }
+	accounts.subscribe(value => {
+		currentAccounts = value;
+	});
+
+	selectedAccountId.subscribe(value => {
+		currentSelectedId = value;
+	});
+
+	const selectedAccount = $derived(
+		currentAccounts.find(acc => acc.id === currentSelectedId)
+	);
+
+	const navigation = [
+		{ name: 'Dashboard', href: '/', icon: LayoutDashboard },
+		{ name: 'Trade Log', href: '/log', icon: BookOpen },
+		{ name: 'Analytics', href: '/analytics', icon: BarChart3 },
+		{ name: 'Settings', href: '/settings', icon: Settings }
+	];
+
+	function selectAccount(id: string) {
+		selectedAccountId.set(id);
+		showAccountDropdown = false;
+	}
 </script>
 
-{#if $isLoading}
-  <div class="loading-screen">
-    <div class="spinner"></div>
-    <p>Loading your trading journal...</p>
-  </div>
-{:else}
-  <div class="app">
-    <Sidebar />
-    
-    <!-- Mobile Header -->
-    <header class="mobile-header">
-      <button class="hamburger" on:click={toggleMobileMenu} aria-label="Toggle Menu">
-        <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
-      <div class="mobile-logo">FX</div>
-    </header>
+<div class="flex h-screen bg-gray-50">
+	<!-- Sidebar -->
+	<div class="w-64 bg-white border-r border-gray-200 flex flex-col">
+		<!-- Logo -->
+		<div class="p-6 border-b border-gray-200">
+			<div class="flex items-center gap-2">
+				<TrendingUp class="w-8 h-8 text-primary-600" />
+				<h1 class="text-xl font-bold text-gray-900">TradeJournal</h1>
+			</div>
+		</div>
 
-    {#if isMobileMenuOpen}
-      <div class="mobile-menu-overlay" on:click={toggleMobileMenu}>
-        <Sidebar mobile={true} closeMobile={toggleMobileMenu} />
-      </div>
-    {/if}
+		<!-- Account Selector -->
+		<div class="p-4 border-b border-gray-200">
+			<button
+				onclick={() => showAccountDropdown = !showAccountDropdown}
+				class="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+			>
+				<div class="flex flex-col items-start">
+					<span class="text-xs text-gray-500">Account</span>
+					<span class="text-sm font-medium text-gray-900">
+						{selectedAccount?.name || 'Select Account'}
+					</span>
+				</div>
+				<ChevronDown class="w-4 h-4 text-gray-500" />
+			</button>
 
-    <main class="main">
-      <slot />
-    </main>
-  </div>
-{/if}
+			{#if showAccountDropdown}
+				<div class="absolute left-4 right-4 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+					{#each currentAccounts as account}
+						<button
+							onclick={() => selectAccount(account.id)}
+							class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
+						>
+							<div class="flex flex-col">
+								<span class="text-sm font-medium text-gray-900">{account.name}</span>
+								<span class="text-xs text-gray-500">{account.entity} • {account.type}</span>
+							</div>
+						</button>
+					{/each}
+					<a
+						href="/settings"
+						class="block w-full px-4 py-3 text-sm text-primary-600 hover:bg-gray-50 transition-colors"
+						onclick={() => showAccountDropdown = false}
+					>
+						+ Add New Account
+					</a>
+				</div>
+			{/if}
+		</div>
 
-<style>
-  .app {
-    display: flex;
-    min-height: 100vh;
-  }
+		<!-- Navigation -->
+		<nav class="flex-1 p-4 space-y-1">
+			{#each navigation as item}
+				<a
+					href={item.href}
+					class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors {$page.url.pathname === item.href
+						? 'bg-primary-50 text-primary-700'
+						: 'text-gray-700 hover:bg-gray-50'}"
+				>
+					<svelte:component this={item.icon} class="w-5 h-5" />
+					<span class="text-sm font-medium">{item.name}</span>
+				</a>
+			{/each}
+		</nav>
 
-  .main {
-    flex: 1;
-    margin-left: 240px;
-    padding: 28px;
-    width: calc(100% - 240px);
-  }
+		<!-- Footer -->
+		<div class="p-4 border-t border-gray-200">
+			<div class="text-xs text-gray-500">
+				Version 1.0.0
+			</div>
+		</div>
+	</div>
 
-  .mobile-header {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 60px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 16px;
-    align-items: center;
-    justify-content: space-between;
-    z-index: 90;
-  }
+	<!-- Main Content -->
+	<div class="flex-1 overflow-auto">
+		<slot />
+	</div>
+</div>
 
-  .hamburger {
-    background: transparent;
-    border: none;
-    color: var(--text);
-    cursor: pointer;
-    padding: 8px;
-  }
-
-  .mobile-logo {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    color: white;
-    font-weight: 800;
-  }
-
-  .mobile-menu-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 150;
-  }
-
-  .loading-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    min-height: 100vh;
-    background: var(--bg);
-  }
-  
-  .spinner {
-    width: 48px;
-    height: 48px;
-    border: 4px solid var(--surface2);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
-  }
-  
-  .loading-screen p {
-    margin-top: 16px;
-    color: var(--muted);
-    font-size: 14px;
-  }
-
-  @media (max-width: 900px) {
-    .main {
-      margin-left: 0;
-      width: 100%;
-      padding-top: 80px;
-    }
-
-    .mobile-header {
-      display: flex;
-    }
-  }
-</style>
+<svelte:window onclick={(e) => {
+	if (!(e.target as Element).closest('.account-dropdown')) {
+		showAccountDropdown = false;
+	}
+}} />
