@@ -1,1 +1,13 @@
-[]
+[
+  {
+    "symbol": "EURUSD",
+    "name": "Euro/United States Dollar",
+    "type": "forex",
+    "exchange": "fx",
+    "tickSize": 0.01,
+    "lotSize": 1,
+    "currency": "USD",
+    "notes": "",
+    "id": "1771183838921"
+  }
+]
