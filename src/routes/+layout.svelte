@@ -3,13 +3,15 @@
 	import { page } from '$app/stores';
 	import { selectedAccountId, accounts } from '$lib/stores';
 	import { onMount } from 'svelte';
-	import { 
-		LayoutDashboard, 
-		BookOpen, 
-		BarChart3, 
-		Settings, 
+	import { goto } from '$app/navigation';
+	import {
+		LayoutDashboard,
+		BookOpen,
+		BarChart3,
+		Settings,
 		TrendingUp,
-		ChevronDown 
+		ChevronDown,
+		Plus
 	} from 'lucide-svelte';
 
 	let showAccountDropdown = $state(false);
@@ -21,24 +23,22 @@
 		const data = await res.json();
 		accounts.set(data);
 		currentAccounts = data;
-		
+
 		if (data.length > 0 && !currentSelectedId) {
 			selectedAccountId.set(data[0].id);
 			currentSelectedId = data[0].id;
 		}
 	});
 
-	accounts.subscribe(value => {
+	accounts.subscribe((value) => {
 		currentAccounts = value;
 	});
 
-	selectedAccountId.subscribe(value => {
+	selectedAccountId.subscribe((value) => {
 		currentSelectedId = value;
 	});
 
-	const selectedAccount = $derived(
-		currentAccounts.find(acc => acc.id === currentSelectedId)
-	);
+	const selectedAccount = $derived(currentAccounts.find((acc) => acc.id === currentSelectedId));
 
 	const navigation = [
 		{ name: 'Dashboard', href: '/', icon: LayoutDashboard },
@@ -49,80 +49,114 @@
 
 	function selectAccount(id: string) {
 		selectedAccountId.set(id);
+		currentSelectedId = id;
 		showAccountDropdown = false;
+	}
+
+	function handleAddAccount() {
+		showAccountDropdown = false;
+		goto('/settings?tab=accounts&action=add');
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		const target = event.target as HTMLElement;
+		if (!target.closest('.account-dropdown-container')) {
+			showAccountDropdown = false;
+		}
 	}
 </script>
 
+<svelte:window onclick={handleClickOutside} />
+
 <div class="flex h-screen bg-gray-50">
 	<!-- Sidebar -->
-	<div class="w-64 bg-white border-r border-gray-200 flex flex-col">
+	<div class="flex w-64 flex-col border-r border-gray-200 bg-white">
 		<!-- Logo -->
-		<div class="p-6 border-b border-gray-200">
+		<div class="border-b border-gray-200 p-6">
 			<div class="flex items-center gap-2">
-				<TrendingUp class="w-8 h-8 text-primary-600" />
+				<TrendingUp class="text-primary-600 h-8 w-8" />
 				<h1 class="text-xl font-bold text-gray-900">TradeJournal</h1>
 			</div>
 		</div>
 
 		<!-- Account Selector -->
-		<div class="p-4 border-b border-gray-200">
-			<button
-				onclick={() => showAccountDropdown = !showAccountDropdown}
-				class="w-full flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-			>
-				<div class="flex flex-col items-start">
-					<span class="text-xs text-gray-500">Account</span>
-					<span class="text-sm font-medium text-gray-900">
-						{selectedAccount?.name || 'Select Account'}
-					</span>
-				</div>
-				<ChevronDown class="w-4 h-4 text-gray-500" />
-			</button>
+		<div class="border-b border-gray-200 p-4">
+			<div class="account-dropdown-container relative">
+				<button
+					onclick={(e) => {
+						e.stopPropagation();
+						showAccountDropdown = !showAccountDropdown;
+					}}
+					class="flex w-full items-center justify-between rounded-lg bg-gray-50 p-3 transition-colors hover:bg-gray-100"
+				>
+					<div class="flex flex-col items-start">
+						<span class="text-xs text-gray-500">Account</span>
+						<span class="text-sm font-medium text-gray-900">
+							{selectedAccount?.name || 'Select Account'}
+						</span>
+					</div>
+					<ChevronDown
+						class="h-4 w-4 text-gray-500 transition-transform {showAccountDropdown
+							? 'rotate-180'
+							: ''}"
+					/>
+				</button>
 
-			{#if showAccountDropdown}
-				<div class="absolute left-4 right-4 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
-					{#each currentAccounts as account}
-						<button
-							onclick={() => selectAccount(account.id)}
-							class="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
-						>
-							<div class="flex flex-col">
-								<span class="text-sm font-medium text-gray-900">{account.name}</span>
-								<span class="text-xs text-gray-500">{account.entity} • {account.type}</span>
-							</div>
-						</button>
-					{/each}
-					<a
-						href="/settings"
-						class="block w-full px-4 py-3 text-sm text-primary-600 hover:bg-gray-50 transition-colors"
-						onclick={() => showAccountDropdown = false}
+				{#if showAccountDropdown}
+					<div
+						class="absolute right-0 left-0 z-50 mt-2 max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg"
 					>
-						+ Add New Account
-					</a>
-				</div>
-			{/if}
+						{#each currentAccounts as account}
+							<button
+								onclick={(e) => {
+									e.stopPropagation();
+									selectAccount(account.id);
+								}}
+								class="w-full border-b border-gray-100 px-4 py-3 text-left transition-colors last:border-b-0 hover:bg-gray-50 {account.id ===
+								currentSelectedId
+									? 'bg-blue-50'
+									: ''}"
+							>
+								<div class="flex flex-col">
+									<span class="text-sm font-medium text-gray-900">{account.name}</span>
+									<span class="text-xs text-gray-500">{account.entity} • {account.type}</span>
+								</div>
+							</button>
+						{/each}
+						<button
+							onclick={(e) => {
+								e.stopPropagation();
+								handleAddAccount();
+							}}
+							class="text-primary-600 flex w-full items-center gap-2 border-t border-gray-200 px-4 py-3 text-sm transition-colors hover:bg-gray-50"
+						>
+							<Plus class="h-4 w-4" />
+							Add New Account
+						</button>
+					</div>
+				{/if}
+			</div>
 		</div>
 
 		<!-- Navigation -->
-		<nav class="flex-1 p-4 space-y-1">
+		<nav class="flex-1 space-y-1 p-4">
 			{#each navigation as item}
 				<a
 					href={item.href}
-					class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors {$page.url.pathname === item.href
+					class="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors {$page.url
+						.pathname === item.href
 						? 'bg-primary-50 text-primary-700'
 						: 'text-gray-700 hover:bg-gray-50'}"
 				>
-					<svelte:component this={item.icon} class="w-5 h-5" />
+					<svelte:component this={item.icon} class="h-5 w-5" />
 					<span class="text-sm font-medium">{item.name}</span>
 				</a>
 			{/each}
 		</nav>
 
 		<!-- Footer -->
-		<div class="p-4 border-t border-gray-200">
-			<div class="text-xs text-gray-500">
-				Version 1.0.0
-			</div>
+		<div class="border-t border-gray-200 p-4">
+			<div class="text-xs text-gray-500">Version 1.0.0</div>
 		</div>
 	</div>
 
@@ -131,9 +165,3 @@
 		<slot />
 	</div>
 </div>
-
-<svelte:window onclick={(e) => {
-	if (!(e.target as Element).closest('.account-dropdown')) {
-		showAccountDropdown = false;
-	}
-}} />

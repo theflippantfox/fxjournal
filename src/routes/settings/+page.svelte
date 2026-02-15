@@ -1,14 +1,36 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { accounts } from '$lib/stores';
-	import { Plus, Edit, Trash2, DollarSign } from 'lucide-svelte';
-	import type { Account, Settings } from '$lib/types';
+	import { Plus, Edit, Trash2, Save, DollarSign } from 'lucide-svelte';
+	import type {
+		Account,
+		Settings,
+		Instrument,
+		Strategy,
+		ChecklistTemplate,
+		ChecklistItem
+	} from '$lib/types';
 
+	let currentTab = $state('accounts');
 	let currentAccounts = $state<Account[]>([]);
+	let instruments = $state<Instrument[]>([]);
+	let strategies = $state<Strategy[]>([]);
+	let checklists = $state<ChecklistTemplate[]>([]);
 	let settings = $state<Settings | null>(null);
+
+	// Modal states
 	let showAccountModal = $state(false);
+	let showInstrumentModal = $state(false);
+	let showStrategyModal = $state(false);
+	let showChecklistModal = $state(false);
+
 	let editingAccount = $state<Account | null>(null);
-	
+	let editingInstrument = $state<Instrument | null>(null);
+	let editingStrategy = $state<Strategy | null>(null);
+	let editingChecklist = $state<ChecklistTemplate | null>(null);
+
+	// Form states
 	let accountForm = $state({
 		name: '',
 		entity: '',
@@ -17,9 +39,59 @@
 		investedAmount: ''
 	});
 
+	let instrumentForm = $state({
+		symbol: '',
+		name: '',
+		type: 'stock' as 'stock' | 'forex' | 'crypto' | 'futures' | 'options' | 'index',
+		exchange: '',
+		tickSize: '',
+		lotSize: '',
+		currency: 'USD',
+		notes: ''
+	});
+
+	let strategyForm = $state({
+		name: '',
+		description: '',
+		setup: '',
+		entry: '',
+		exit: '',
+		stopLoss: '',
+		targetRR: '',
+		timeframes: '',
+		markets: '',
+		notes: '',
+		active: true
+	});
+
+	let checklistForm = $state({
+		name: '',
+		items: [] as ChecklistItem[]
+	});
+
+	let newChecklistItem = $state({
+		text: '',
+		category: 'pre-trade' as 'pre-trade' | 'during-trade' | 'post-trade',
+		required: false
+	});
+
 	onMount(async () => {
-		await loadAccounts();
-		await loadSettings();
+		const urlParams = new URLSearchParams($page.url.search);
+		const tab = urlParams.get('tab');
+		const action = urlParams.get('action');
+
+		if (tab) currentTab = tab;
+		if (action === 'add' && tab === 'accounts') {
+			openAddAccountModal();
+		}
+
+		await Promise.all([
+			loadAccounts(),
+			loadInstruments(),
+			loadStrategies(),
+			loadChecklists(),
+			loadSettings()
+		]);
 	});
 
 	async function loadAccounts() {
@@ -33,6 +105,33 @@
 		}
 	}
 
+	async function loadInstruments() {
+		try {
+			const res = await fetch('/api/instruments');
+			instruments = await res.json();
+		} catch (error) {
+			console.error('Error loading instruments:', error);
+		}
+	}
+
+	async function loadStrategies() {
+		try {
+			const res = await fetch('/api/strategies');
+			strategies = await res.json();
+		} catch (error) {
+			console.error('Error loading strategies:', error);
+		}
+	}
+
+	async function loadChecklists() {
+		try {
+			const res = await fetch('/api/checklists');
+			checklists = await res.json();
+		} catch (error) {
+			console.error('Error loading checklists:', error);
+		}
+	}
+
 	async function loadSettings() {
 		try {
 			const res = await fetch('/api/settings');
@@ -42,6 +141,7 @@
 		}
 	}
 
+	// Account functions
 	function openAddAccountModal() {
 		editingAccount = null;
 		accountForm = {
@@ -116,6 +216,265 @@
 		}
 	}
 
+	// Instrument functions
+	function openAddInstrumentModal() {
+		editingInstrument = null;
+		instrumentForm = {
+			symbol: '',
+			name: '',
+			type: 'stock',
+			exchange: '',
+			tickSize: '0.01',
+			lotSize: '1',
+			currency: 'USD',
+			notes: ''
+		};
+		showInstrumentModal = true;
+	}
+
+	function openEditInstrumentModal(instrument: Instrument) {
+		editingInstrument = instrument;
+		instrumentForm = {
+			symbol: instrument.symbol,
+			name: instrument.name,
+			type: instrument.type,
+			exchange: instrument.exchange,
+			tickSize: instrument.tickSize.toString(),
+			lotSize: instrument.lotSize.toString(),
+			currency: instrument.currency,
+			notes: instrument.notes
+		};
+		showInstrumentModal = true;
+	}
+
+	async function handleInstrumentSubmit() {
+		const instrumentData = {
+			symbol: instrumentForm.symbol.toUpperCase(),
+			name: instrumentForm.name,
+			type: instrumentForm.type,
+			exchange: instrumentForm.exchange,
+			tickSize: parseFloat(instrumentForm.tickSize),
+			lotSize: parseFloat(instrumentForm.lotSize),
+			currency: instrumentForm.currency,
+			notes: instrumentForm.notes
+		};
+
+		try {
+			if (editingInstrument) {
+				await fetch('/api/instruments', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ id: editingInstrument.id, ...instrumentData })
+				});
+			} else {
+				await fetch('/api/instruments', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(instrumentData)
+				});
+			}
+
+			showInstrumentModal = false;
+			await loadInstruments();
+		} catch (error) {
+			console.error('Error saving instrument:', error);
+		}
+	}
+
+	async function deleteInstrument(id: string) {
+		if (!confirm('Are you sure you want to delete this instrument?')) return;
+
+		try {
+			await fetch('/api/instruments', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id })
+			});
+
+			await loadInstruments();
+		} catch (error) {
+			console.error('Error deleting instrument:', error);
+		}
+	}
+
+	// Strategy functions
+	function openAddStrategyModal() {
+		editingStrategy = null;
+		strategyForm = {
+			name: '',
+			description: '',
+			setup: '',
+			entry: '',
+			exit: '',
+			stopLoss: '',
+			targetRR: '2',
+			timeframes: '',
+			markets: '',
+			notes: '',
+			active: true
+		};
+		showStrategyModal = true;
+	}
+
+	function openEditStrategyModal(strategy: Strategy) {
+		editingStrategy = strategy;
+		strategyForm = {
+			name: strategy.name,
+			description: strategy.description,
+			setup: strategy.setup,
+			entry: strategy.entry,
+			exit: strategy.exit,
+			stopLoss: strategy.stopLoss,
+			targetRR: strategy.targetRR.toString(),
+			timeframes: strategy.timeframes.join(', '),
+			markets: strategy.markets.join(', '),
+			notes: strategy.notes,
+			active: strategy.active
+		};
+		showStrategyModal = true;
+	}
+
+	async function handleStrategySubmit() {
+		const strategyData = {
+			name: strategyForm.name,
+			description: strategyForm.description,
+			setup: strategyForm.setup,
+			entry: strategyForm.entry,
+			exit: strategyForm.exit,
+			stopLoss: strategyForm.stopLoss,
+			targetRR: parseFloat(strategyForm.targetRR),
+			timeframes: strategyForm.timeframes
+				.split(',')
+				.map((t) => t.trim())
+				.filter(Boolean),
+			markets: strategyForm.markets
+				.split(',')
+				.map((m) => m.trim())
+				.filter(Boolean),
+			notes: strategyForm.notes,
+			active: strategyForm.active,
+			winRate: 0,
+			totalTrades: 0,
+			avgPnl: 0
+		};
+
+		try {
+			if (editingStrategy) {
+				await fetch('/api/strategies', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ id: editingStrategy.id, ...strategyData })
+				});
+			} else {
+				await fetch('/api/strategies', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(strategyData)
+				});
+			}
+
+			showStrategyModal = false;
+			await loadStrategies();
+		} catch (error) {
+			console.error('Error saving strategy:', error);
+		}
+	}
+
+	async function deleteStrategy(id: string) {
+		if (!confirm('Are you sure you want to delete this strategy?')) return;
+
+		try {
+			await fetch('/api/strategies', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id })
+			});
+
+			await loadStrategies();
+		} catch (error) {
+			console.error('Error deleting strategy:', error);
+		}
+	}
+
+	// Checklist functions
+	function openAddChecklistModal() {
+		editingChecklist = null;
+		checklistForm = {
+			name: '',
+			items: []
+		};
+		showChecklistModal = true;
+	}
+
+	function openEditChecklistModal(checklist: ChecklistTemplate) {
+		editingChecklist = checklist;
+		checklistForm = {
+			name: checklist.name,
+			items: [...checklist.items]
+		};
+		showChecklistModal = true;
+	}
+
+	function addChecklistItem() {
+		if (!newChecklistItem.text.trim()) return;
+
+		checklistForm.items.push({
+			id: Date.now().toString(),
+			text: newChecklistItem.text,
+			category: newChecklistItem.category,
+			required: newChecklistItem.required
+		});
+
+		newChecklistItem = {
+			text: '',
+			category: 'pre-trade',
+			required: false
+		};
+	}
+
+	function removeChecklistItem(id: string) {
+		checklistForm.items = checklistForm.items.filter((item) => item.id !== id);
+	}
+
+	async function handleChecklistSubmit() {
+		try {
+			if (editingChecklist) {
+				await fetch('/api/checklists', {
+					method: 'PUT',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ id: editingChecklist.id, ...checklistForm })
+				});
+			} else {
+				await fetch('/api/checklists', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(checklistForm)
+				});
+			}
+
+			showChecklistModal = false;
+			await loadChecklists();
+		} catch (error) {
+			console.error('Error saving checklist:', error);
+		}
+	}
+
+	async function deleteChecklist(id: string) {
+		if (!confirm('Are you sure you want to delete this checklist?')) return;
+
+		try {
+			await fetch('/api/checklists', {
+				method: 'DELETE',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id })
+			});
+
+			await loadChecklists();
+		} catch (error) {
+			console.error('Error deleting checklist:', error);
+		}
+	}
+
 	async function saveSettings() {
 		if (!settings) return;
 
@@ -140,127 +499,421 @@
 <div class="p-8">
 	<!-- Header -->
 	<div class="mb-8">
-		<h1 class="text-3xl font-bold text-gray-900 mb-2">Settings</h1>
-		<p class="text-gray-600">Manage your accounts and preferences</p>
+		<h1 class="mb-2 text-3xl font-bold text-gray-900">Settings</h1>
+		<p class="text-gray-600">Manage your accounts, instruments, strategies, and preferences</p>
 	</div>
 
-	<!-- Accounts Section -->
-	<div class="card mb-6">
-		<div class="flex items-center justify-between mb-6">
-			<h2 class="text-xl font-semibold text-gray-900">Trading Accounts</h2>
-			<button onclick={openAddAccountModal} class="btn btn-primary flex items-center gap-2">
-				<Plus class="w-5 h-5" />
-				Add Account
+	<!-- Tabs -->
+	<div class="mb-6 border-b border-gray-200">
+		<nav class="flex space-x-8">
+			<button
+				onclick={() => (currentTab = 'accounts')}
+				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {currentTab === 'accounts'
+					? 'border-primary-600 text-primary-600'
+					: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+			>
+				Accounts
 			</button>
-		</div>
+			<button
+				onclick={() => (currentTab = 'instruments')}
+				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {currentTab ===
+				'instruments'
+					? 'border-primary-600 text-primary-600'
+					: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+			>
+				Instruments
+			</button>
+			<button
+				onclick={() => (currentTab = 'strategies')}
+				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {currentTab ===
+				'strategies'
+					? 'border-primary-600 text-primary-600'
+					: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+			>
+				Strategies
+			</button>
+			<button
+				onclick={() => (currentTab = 'checklists')}
+				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {currentTab ===
+				'checklists'
+					? 'border-primary-600 text-primary-600'
+					: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+			>
+				Checklists
+			</button>
+			<button
+				onclick={() => (currentTab = 'general')}
+				class="border-b-2 px-1 py-4 text-sm font-medium transition-colors {currentTab === 'general'
+					? 'border-primary-600 text-primary-600'
+					: 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'}"
+			>
+				General
+			</button>
+		</nav>
+	</div>
 
-		{#if currentAccounts.length === 0}
-			<div class="text-center py-12 text-gray-500">
-				No accounts yet. Click "Add Account" to create your first one.
+	<!-- Accounts Tab -->
+	{#if currentTab === 'accounts'}
+		<div class="card">
+			<div class="mb-6 flex items-center justify-between">
+				<h2 class="text-xl font-semibold text-gray-900">Trading Accounts</h2>
+				<button onclick={openAddAccountModal} class="btn btn-primary flex items-center gap-2">
+					<Plus class="h-5 w-5" />
+					Add Account
+				</button>
 			</div>
-		{:else}
-			<div class="space-y-4">
-				{#each currentAccounts as account}
-					<div class="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
-						<div class="flex items-center justify-between">
-							<div class="flex-1">
-								<div class="flex items-center gap-3 mb-2">
-									<h3 class="text-lg font-semibold text-gray-900">{account.name}</h3>
-									<span class="inline-flex items-center px-2 py-1 rounded text-xs font-medium {
-										account.type === 'live' ? 'bg-green-100 text-green-800' :
-										account.type === 'demo' ? 'bg-blue-100 text-blue-800' :
-										'bg-gray-100 text-gray-800'
-									}">
-										{account.type.toUpperCase()}
-									</span>
+
+			{#if currentAccounts.length === 0}
+				<div class="py-12 text-center text-gray-500">
+					No accounts yet. Click "Add Account" to create your first one.
+				</div>
+			{:else}
+				<div class="space-y-4">
+					{#each currentAccounts as account}
+						<div class="rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
+							<div class="flex items-center justify-between">
+								<div class="flex-1">
+									<div class="mb-2 flex items-center gap-3">
+										<h3 class="text-lg font-semibold text-gray-900">{account.name}</h3>
+										<span
+											class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {account.type ===
+											'live'
+												? 'bg-green-100 text-green-800'
+												: account.type === 'demo'
+													? 'bg-blue-100 text-blue-800'
+													: 'bg-gray-100 text-gray-800'}"
+										>
+											{account.type.toUpperCase()}
+										</span>
+									</div>
+									<div class="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+										<div>
+											<span class="text-gray-600">Entity:</span>
+											<span class="ml-1 font-medium text-gray-900">{account.entity}</span>
+										</div>
+										<div>
+											<span class="text-gray-600">Balance:</span>
+											<span class="ml-1 font-medium text-gray-900">
+												${account.balance.toLocaleString()}
+											</span>
+										</div>
+										<div>
+											<span class="text-gray-600">Invested:</span>
+											<span class="ml-1 font-medium text-gray-900">
+												${account.investedAmount.toLocaleString()}
+											</span>
+										</div>
+										<div>
+											<span class="text-gray-600">Total P&L:</span>
+											<span
+												class="font-medium {account.totalPnl >= 0
+													? 'text-profit'
+													: 'text-loss'} ml-1"
+											>
+												${account.totalPnl.toLocaleString()}
+											</span>
+										</div>
+									</div>
 								</div>
-								<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-									<div>
-										<span class="text-gray-600">Entity:</span>
-										<span class="font-medium text-gray-900 ml-1">{account.entity}</span>
-									</div>
-									<div>
-										<span class="text-gray-600">Balance:</span>
-										<span class="font-medium text-gray-900 ml-1">
-											${account.balance.toLocaleString()}
-										</span>
-									</div>
-									<div>
-										<span class="text-gray-600">Invested:</span>
-										<span class="font-medium text-gray-900 ml-1">
-											${account.investedAmount.toLocaleString()}
-										</span>
-									</div>
-									<div>
-										<span class="text-gray-600">Total P&L:</span>
-										<span class="font-medium {account.totalPnl >= 0 ? 'text-profit' : 'text-loss'} ml-1">
-											${account.totalPnl.toLocaleString()}
-										</span>
-									</div>
+								<div class="ml-4 flex items-center gap-2">
+									<button
+										onclick={() => openEditAccountModal(account)}
+										class="hover:text-primary-600 p-2 text-gray-600 transition-colors"
+									>
+										<Edit class="h-5 w-5" />
+									</button>
+									<button
+										onclick={() => deleteAccount(account.id)}
+										class="p-2 text-gray-600 transition-colors hover:text-red-600"
+									>
+										<Trash2 class="h-5 w-5" />
+									</button>
 								</div>
-							</div>
-							<div class="flex items-center gap-2 ml-4">
-								<button
-									onclick={() => openEditAccountModal(account)}
-									class="p-2 text-gray-600 hover:text-primary-600 transition-colors"
-								>
-									<Edit class="w-5 h-5" />
-								</button>
-								<button
-									onclick={() => deleteAccount(account.id)}
-									class="p-2 text-gray-600 hover:text-red-600 transition-colors"
-								>
-									<Trash2 class="w-5 h-5" />
-								</button>
 							</div>
 						</div>
-					</div>
-				{/each}
-			</div>
-		{/if}
-	</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
 
-	<!-- General Settings -->
-	{#if settings}
+	<!-- Instruments Tab -->
+	{#if currentTab === 'instruments'}
 		<div class="card">
-			<h2 class="text-xl font-semibold text-gray-900 mb-6">General Settings</h2>
-			
-			<div class="space-y-4 max-w-xl">
-				<div>
-					<label class="label">Currency</label>
-					<select bind:value={settings.currency} class="select">
-						<option value="USD">USD ($)</option>
-						<option value="EUR">EUR (€)</option>
-						<option value="GBP">GBP (£)</option>
-						<option value="JPY">JPY (¥)</option>
-						<option value="INR">INR (₹)</option>
-					</select>
+			<div class="mb-6 flex items-center justify-between">
+				<h2 class="text-xl font-semibold text-gray-900">Instruments</h2>
+				<button onclick={openAddInstrumentModal} class="btn btn-primary flex items-center gap-2">
+					<Plus class="h-5 w-5" />
+					Add Instrument
+				</button>
+			</div>
+
+			{#if instruments.length === 0}
+				<div class="py-12 text-center text-gray-500">
+					No instruments yet. Add instruments to track what you're trading.
+				</div>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="w-full">
+						<thead>
+							<tr class="border-b border-gray-200">
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Symbol</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Name</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Type</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Exchange</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Tick Size</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Lot Size</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each instruments as instrument}
+								<tr class="border-b border-gray-100 hover:bg-gray-50">
+									<td class="px-4 py-3 text-sm font-medium text-gray-900">{instrument.symbol}</td>
+									<td class="px-4 py-3 text-sm text-gray-900">{instrument.name}</td>
+									<td class="px-4 py-3">
+										<span
+											class="inline-flex items-center rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-800"
+										>
+											{instrument.type.toUpperCase()}
+										</span>
+									</td>
+									<td class="px-4 py-3 text-sm text-gray-900">{instrument.exchange}</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">{instrument.tickSize}</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">{instrument.lotSize}</td>
+									<td class="px-4 py-3 text-right">
+										<div class="flex items-center justify-end gap-2">
+											<button
+												onclick={() => openEditInstrumentModal(instrument)}
+												class="hover:text-primary-600 p-1 text-gray-600 transition-colors"
+											>
+												<Edit class="h-4 w-4" />
+											</button>
+											<button
+												onclick={() => deleteInstrument(instrument.id)}
+												class="p-1 text-gray-600 transition-colors hover:text-red-600"
+											>
+												<Trash2 class="h-4 w-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Strategies Tab -->
+	{#if currentTab === 'strategies'}
+		<div class="card">
+			<div class="mb-6 flex items-center justify-between">
+				<h2 class="text-xl font-semibold text-gray-900">Trading Strategies</h2>
+				<button onclick={openAddStrategyModal} class="btn btn-primary flex items-center gap-2">
+					<Plus class="h-5 w-5" />
+					Add Strategy
+				</button>
+			</div>
+
+			{#if strategies.length === 0}
+				<div class="py-12 text-center text-gray-500">
+					No strategies yet. Define your trading strategies to track performance.
+				</div>
+			{:else}
+				<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+					{#each strategies as strategy}
+						<div class="rounded-lg border border-gray-200 p-4 transition-colors hover:bg-gray-50">
+							<div class="mb-3 flex items-start justify-between">
+								<div>
+									<h3 class="text-lg font-semibold text-gray-900">{strategy.name}</h3>
+									<p class="mt-1 text-sm text-gray-600">{strategy.description}</p>
+								</div>
+								<div class="flex items-center gap-2">
+									<button
+										onclick={() => openEditStrategyModal(strategy)}
+										class="hover:text-primary-600 p-1 text-gray-600 transition-colors"
+									>
+										<Edit class="h-4 w-4" />
+									</button>
+									<button
+										onclick={() => deleteStrategy(strategy.id)}
+										class="p-1 text-gray-600 transition-colors hover:text-red-600"
+									>
+										<Trash2 class="h-4 w-4" />
+									</button>
+								</div>
+							</div>
+							<div class="space-y-2 text-sm">
+								<div>
+									<span class="font-medium text-gray-700">Target R:R:</span>
+									<span class="ml-2 text-gray-900">{strategy.targetRR}</span>
+								</div>
+								<div>
+									<span class="font-medium text-gray-700">Timeframes:</span>
+									<span class="ml-2 text-gray-900">{strategy.timeframes.join(', ')}</span>
+								</div>
+								<div>
+									<span class="font-medium text-gray-700">Markets:</span>
+									<span class="ml-2 text-gray-900">{strategy.markets.join(', ')}</span>
+								</div>
+								<div class="border-t border-gray-200 pt-2">
+									<span class="font-medium text-gray-700">Status:</span>
+									<span
+										class="ml-2 inline-flex items-center rounded px-2 py-1 text-xs font-medium {strategy.active
+											? 'bg-green-100 text-green-800'
+											: 'bg-gray-100 text-gray-800'}"
+									>
+										{strategy.active ? 'ACTIVE' : 'INACTIVE'}
+									</span>
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- Checklists Tab -->
+	{#if currentTab === 'checklists'}
+		<div class="card">
+			<div class="mb-6 flex items-center justify-between">
+				<h2 class="text-xl font-semibold text-gray-900">Trade Checklists</h2>
+				<button onclick={openAddChecklistModal} class="btn btn-primary flex items-center gap-2">
+					<Plus class="h-5 w-5" />
+					Add Checklist
+				</button>
+			</div>
+
+			{#if checklists.length === 0}
+				<div class="py-12 text-center text-gray-500">
+					No checklists yet. Create checklists to ensure consistent trade execution.
+				</div>
+			{:else}
+				<div class="space-y-4">
+					{#each checklists as checklist}
+						<div class="rounded-lg border border-gray-200 p-4">
+							<div class="mb-3 flex items-start justify-between">
+								<h3 class="text-lg font-semibold text-gray-900">{checklist.name}</h3>
+								<div class="flex items-center gap-2">
+									<button
+										onclick={() => openEditChecklistModal(checklist)}
+										class="hover:text-primary-600 p-1 text-gray-600 transition-colors"
+									>
+										<Edit class="h-4 w-4" />
+									</button>
+									<button
+										onclick={() => deleteChecklist(checklist.id)}
+										class="p-1 text-gray-600 transition-colors hover:text-red-600"
+									>
+										<Trash2 class="h-4 w-4" />
+									</button>
+								</div>
+							</div>
+							<div class="space-y-2">
+								{#each checklist.items as item}
+									<div class="flex items-center gap-2 text-sm">
+										<span
+											class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {item.category ===
+											'pre-trade'
+												? 'bg-blue-100 text-blue-800'
+												: item.category === 'during-trade'
+													? 'bg-yellow-100 text-yellow-800'
+													: 'bg-green-100 text-green-800'}"
+										>
+											{item.category}
+										</span>
+										<span class="text-gray-900">{item.text}</span>
+										{#if item.required}
+											<span class="text-xs text-red-600">*</span>
+										{/if}
+									</div>
+								{/each}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!-- General Settings Tab -->
+	{#if currentTab === 'general' && settings}
+		<div class="card">
+			<h2 class="mb-6 text-xl font-semibold text-gray-900">General Settings</h2>
+
+			<div class="max-w-2xl space-y-6">
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="label">Currency</label>
+						<select bind:value={settings.currency} class="select">
+							<option value="USD">USD ($)</option>
+							<option value="EUR">EUR (€)</option>
+							<option value="GBP">GBP (£)</option>
+							<option value="JPY">JPY (¥)</option>
+							<option value="INR">INR (₹)</option>
+						</select>
+					</div>
+
+					<div>
+						<label class="label">Timezone</label>
+						<select bind:value={settings.timezone} class="select">
+							<option value="UTC">UTC</option>
+							<option value="America/New_York">Eastern Time (ET)</option>
+							<option value="America/Chicago">Central Time (CT)</option>
+							<option value="America/Denver">Mountain Time (MT)</option>
+							<option value="America/Los_Angeles">Pacific Time (PT)</option>
+							<option value="Europe/London">London</option>
+							<option value="Asia/Tokyo">Tokyo</option>
+							<option value="Asia/Kolkata">India</option>
+						</select>
+					</div>
 				</div>
 
 				<div>
-					<label class="label">Timezone</label>
-					<select bind:value={settings.timezone} class="select">
-						<option value="UTC">UTC</option>
-						<option value="America/New_York">Eastern Time (ET)</option>
-						<option value="America/Chicago">Central Time (CT)</option>
-						<option value="America/Denver">Mountain Time (MT)</option>
-						<option value="America/Los_Angeles">Pacific Time (PT)</option>
-						<option value="Europe/London">London</option>
-						<option value="Asia/Tokyo">Tokyo</option>
-						<option value="Asia/Kolkata">India</option>
-					</select>
+					<h3 class="mb-4 text-lg font-semibold text-gray-900">Risk Management</h3>
+					<div class="grid grid-cols-2 gap-4">
+						<div>
+							<label class="label">Default Lot Size</label>
+							<input type="number" step="0.01" bind:value={settings.defaultLotSize} class="input" />
+						</div>
+
+						<div>
+							<label class="label">Default R:R Ratio</label>
+							<input type="number" step="0.1" bind:value={settings.defaultRR} class="input" />
+						</div>
+
+						<div>
+							<label class="label">Risk Per Trade (%)</label>
+							<input type="number" step="0.1" bind:value={settings.riskPerTrade} class="input" />
+						</div>
+
+						<div>
+							<label class="label">Max Daily Loss (%)</label>
+							<input type="number" step="0.1" bind:value={settings.maxDailyLoss} class="input" />
+						</div>
+					</div>
 				</div>
 
 				<div>
-					<label class="label">Theme</label>
-					<select bind:value={settings.theme} class="select">
-						<option value="light">Light</option>
-						<option value="dark">Dark</option>
-						<option value="auto">Auto</option>
-					</select>
+					<h3 class="mb-4 text-lg font-semibold text-gray-900">Trading Hours</h3>
+					<div class="grid grid-cols-2 gap-4">
+						<div>
+							<label class="label">Start Time</label>
+							<input type="time" bind:value={settings.tradingHours.start} class="input" />
+						</div>
+
+						<div>
+							<label class="label">End Time</label>
+							<input type="time" bind:value={settings.tradingHours.end} class="input" />
+						</div>
+					</div>
 				</div>
 
-				<button onclick={saveSettings} class="btn btn-primary">
+				<button onclick={saveSettings} class="btn btn-primary flex items-center gap-2">
+					<Save class="h-5 w-5" />
 					Save Settings
 				</button>
 			</div>
@@ -268,17 +921,23 @@
 	{/if}
 </div>
 
-<!-- Add/Edit Account Modal -->
+<!-- Account Modal -->
 {#if showAccountModal}
-	<div class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-		<div class="bg-white rounded-lg max-w-md w-full">
-			<div class="p-6 border-b border-gray-200">
+	<div class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
+		<div class="w-full max-w-md rounded-lg bg-white">
+			<div class="border-b border-gray-200 p-6">
 				<h2 class="text-xl font-bold text-gray-900">
 					{editingAccount ? 'Edit Account' : 'Add New Account'}
 				</h2>
 			</div>
 
-			<form onsubmit={(e) => { e.preventDefault(); handleAccountSubmit(); }} class="p-6 space-y-4">
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleAccountSubmit();
+				}}
+				class="space-y-4 p-6"
+			>
 				<div>
 					<label class="label">Account Name</label>
 					<input
@@ -313,7 +972,9 @@
 				<div>
 					<label class="label">Current Balance</label>
 					<div class="relative">
-						<DollarSign class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+						<DollarSign
+							class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 transform text-gray-400"
+						/>
 						<input
 							type="number"
 							step="0.01"
@@ -328,7 +989,9 @@
 				<div>
 					<label class="label">Invested Amount</label>
 					<div class="relative">
-						<DollarSign class="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+						<DollarSign
+							class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 transform text-gray-400"
+						/>
 						<input
 							type="number"
 							step="0.01"
@@ -346,7 +1009,381 @@
 					</button>
 					<button
 						type="button"
-						onclick={() => showAccountModal = false}
+						onclick={() => (showAccountModal = false)}
+						class="btn btn-secondary flex-1"
+					>
+						Cancel
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Instrument Modal -->
+{#if showInstrumentModal}
+	<div class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
+		<div class="w-full max-w-md rounded-lg bg-white">
+			<div class="border-b border-gray-200 p-6">
+				<h2 class="text-xl font-bold text-gray-900">
+					{editingInstrument ? 'Edit Instrument' : 'Add New Instrument'}
+				</h2>
+			</div>
+
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleInstrumentSubmit();
+				}}
+				class="space-y-4 p-6"
+			>
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="label">Symbol</label>
+						<input
+							type="text"
+							bind:value={instrumentForm.symbol}
+							required
+							class="input"
+							placeholder="AAPL"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Type</label>
+						<select bind:value={instrumentForm.type} required class="select">
+							<option value="stock">Stock</option>
+							<option value="forex">Forex</option>
+							<option value="crypto">Crypto</option>
+							<option value="futures">Futures</option>
+							<option value="options">Options</option>
+							<option value="index">Index</option>
+						</select>
+					</div>
+				</div>
+
+				<div>
+					<label class="label">Name</label>
+					<input
+						type="text"
+						bind:value={instrumentForm.name}
+						required
+						class="input"
+						placeholder="Apple Inc."
+					/>
+				</div>
+
+				<div class="grid grid-cols-2 gap-4">
+					<div>
+						<label class="label">Exchange</label>
+						<input
+							type="text"
+							bind:value={instrumentForm.exchange}
+							class="input"
+							placeholder="NASDAQ"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Currency</label>
+						<input
+							type="text"
+							bind:value={instrumentForm.currency}
+							required
+							class="input"
+							placeholder="USD"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Tick Size</label>
+						<input
+							type="number"
+							step="0.0001"
+							bind:value={instrumentForm.tickSize}
+							required
+							class="input"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Lot Size</label>
+						<input
+							type="number"
+							step="0.01"
+							bind:value={instrumentForm.lotSize}
+							required
+							class="input"
+						/>
+					</div>
+				</div>
+
+				<div>
+					<label class="label">Notes</label>
+					<textarea bind:value={instrumentForm.notes} rows="2" class="input"></textarea>
+				</div>
+
+				<div class="flex gap-3 pt-4">
+					<button type="submit" class="btn btn-primary flex-1">
+						{editingInstrument ? 'Update' : 'Create'}
+					</button>
+					<button
+						type="button"
+						onclick={() => (showInstrumentModal = false)}
+						class="btn btn-secondary flex-1"
+					>
+						Cancel
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Strategy Modal -->
+{#if showStrategyModal}
+	<div
+		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"
+	>
+		<div class="my-8 w-full max-w-2xl rounded-lg bg-white">
+			<div class="border-b border-gray-200 p-6">
+				<h2 class="text-xl font-bold text-gray-900">
+					{editingStrategy ? 'Edit Strategy' : 'Add New Strategy'}
+				</h2>
+			</div>
+
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleStrategySubmit();
+				}}
+				class="space-y-4 p-6"
+			>
+				<div>
+					<label class="label">Strategy Name</label>
+					<input
+						type="text"
+						bind:value={strategyForm.name}
+						required
+						class="input"
+						placeholder="Breakout Strategy"
+					/>
+				</div>
+
+				<div>
+					<label class="label">Description</label>
+					<textarea
+						bind:value={strategyForm.description}
+						rows="2"
+						class="input"
+						placeholder="Brief description of the strategy..."
+					></textarea>
+				</div>
+
+				<div>
+					<label class="label">Setup Conditions</label>
+					<textarea
+						bind:value={strategyForm.setup}
+						rows="2"
+						class="input"
+						placeholder="What conditions need to be met?"
+					></textarea>
+				</div>
+
+				<div>
+					<label class="label">Entry Rules</label>
+					<textarea
+						bind:value={strategyForm.entry}
+						rows="2"
+						class="input"
+						placeholder="When do you enter?"
+					></textarea>
+				</div>
+
+				<div>
+					<label class="label">Exit Rules</label>
+					<textarea
+						bind:value={strategyForm.exit}
+						rows="2"
+						class="input"
+						placeholder="When do you exit?"
+					></textarea>
+				</div>
+
+				<div>
+					<label class="label">Stop Loss Rules</label>
+					<textarea
+						bind:value={strategyForm.stopLoss}
+						rows="2"
+						class="input"
+						placeholder="Where do you place stop loss?"
+					></textarea>
+				</div>
+
+				<div class="grid grid-cols-3 gap-4">
+					<div>
+						<label class="label">Target R:R</label>
+						<input
+							type="number"
+							step="0.1"
+							bind:value={strategyForm.targetRR}
+							required
+							class="input"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Timeframes (comma separated)</label>
+						<input
+							type="text"
+							bind:value={strategyForm.timeframes}
+							class="input"
+							placeholder="5m, 15m, 1h"
+						/>
+					</div>
+
+					<div>
+						<label class="label">Markets (comma separated)</label>
+						<input
+							type="text"
+							bind:value={strategyForm.markets}
+							class="input"
+							placeholder="Stocks, Forex"
+						/>
+					</div>
+				</div>
+
+				<div>
+					<label class="label">Additional Notes</label>
+					<textarea bind:value={strategyForm.notes} rows="2" class="input"></textarea>
+				</div>
+
+				<div>
+					<label class="flex items-center gap-2">
+						<input
+							type="checkbox"
+							bind:checked={strategyForm.active}
+							class="text-primary-600 focus:ring-primary-500 h-4 w-4 rounded border-gray-300"
+						/>
+						<span class="text-sm font-medium text-gray-700">Active Strategy</span>
+					</label>
+				</div>
+
+				<div class="flex gap-3 pt-4">
+					<button type="submit" class="btn btn-primary flex-1">
+						{editingStrategy ? 'Update' : 'Create'}
+					</button>
+					<button
+						type="button"
+						onclick={() => (showStrategyModal = false)}
+						class="btn btn-secondary flex-1"
+					>
+						Cancel
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+{/if}
+
+<!-- Checklist Modal -->
+{#if showChecklistModal}
+	<div
+		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"
+	>
+		<div class="my-8 w-full max-w-2xl rounded-lg bg-white">
+			<div class="border-b border-gray-200 p-6">
+				<h2 class="text-xl font-bold text-gray-900">
+					{editingChecklist ? 'Edit Checklist' : 'Add New Checklist'}
+				</h2>
+			</div>
+
+			<form
+				onsubmit={(e) => {
+					e.preventDefault();
+					handleChecklistSubmit();
+				}}
+				class="space-y-4 p-6"
+			>
+				<div>
+					<label class="label">Checklist Name</label>
+					<input
+						type="text"
+						bind:value={checklistForm.name}
+						required
+						class="input"
+						placeholder="Pre-Trade Checklist"
+					/>
+				</div>
+
+				<div>
+					<h3 class="mb-2 font-medium text-gray-900">Checklist Items</h3>
+					<div class="mb-4 space-y-2">
+						{#each checklistForm.items as item}
+							<div class="flex items-center gap-2 rounded bg-gray-50 p-2">
+								<span
+									class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {item.category ===
+									'pre-trade'
+										? 'bg-blue-100 text-blue-800'
+										: item.category === 'during-trade'
+											? 'bg-yellow-100 text-yellow-800'
+											: 'bg-green-100 text-green-800'}"
+								>
+									{item.category}
+								</span>
+								<span class="flex-1 text-sm">{item.text}</span>
+								{#if item.required}
+									<span class="text-xs text-red-600">Required</span>
+								{/if}
+								<button
+									type="button"
+									onclick={() => removeChecklistItem(item.id)}
+									class="text-red-600 hover:text-red-800"
+								>
+									<Trash2 class="h-4 w-4" />
+								</button>
+							</div>
+						{/each}
+					</div>
+
+					<div class="rounded-lg border border-gray-200 p-4">
+						<h4 class="mb-3 text-sm font-medium text-gray-900">Add Item</h4>
+						<div class="space-y-3">
+							<input
+								type="text"
+								bind:value={newChecklistItem.text}
+								class="input"
+								placeholder="Check trend direction..."
+							/>
+							<div class="flex gap-2">
+								<select bind:value={newChecklistItem.category} class="select flex-1">
+									<option value="pre-trade">Pre-Trade</option>
+									<option value="during-trade">During Trade</option>
+									<option value="post-trade">Post-Trade</option>
+								</select>
+								<label class="flex items-center gap-2 px-3">
+									<input
+										type="checkbox"
+										bind:checked={newChecklistItem.required}
+										class="text-primary-600 h-4 w-4 rounded border-gray-300"
+									/>
+									<span class="text-sm">Required</span>
+								</label>
+								<button type="button" onclick={addChecklistItem} class="btn btn-secondary">
+									<Plus class="h-4 w-4" />
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<div class="flex gap-3 pt-4">
+					<button type="submit" class="btn btn-primary flex-1">
+						{editingChecklist ? 'Update' : 'Create'}
+					</button>
+					<button
+						type="button"
+						onclick={() => (showChecklistModal = false)}
 						class="btn btn-secondary flex-1"
 					>
 						Cancel

@@ -1,0 +1,15 @@
+{
+  "currency": "USD",
+  "timezone": "UTC",
+  "defaultAccount": "",
+  "theme": "light",
+  "checklistTemplate": "",
+  "defaultLotSize": 1,
+  "defaultRR": 2,
+  "riskPerTrade": 1,
+  "maxDailyLoss": 2,
+  "tradingHours": {
+    "start": "09:30",
+    "end": "16:00"
+  }
+}
