@@ -1,66 +1,65 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { selectedAccountId } from '$lib/stores';
-	import { formatCurrency } from '$lib/utils/analytics';
-	import {
-		calculatePnL,
-		calculateRiskReward,
-		determineOutcome,
-		calculateActualRR,
-		getTradingViewThumbnail
-	} from '$lib/utils/tradeCalculations';
+	import { accounts, selectedAccountId } from '$lib/stores';
 	import {
 		Plus,
 		Edit,
 		Trash2,
-		Filter,
 		Search,
+		Filter,
 		X,
+		Save,
+		Sparkles,
 		TrendingUp,
 		TrendingDown,
-		Image as ImageIcon,
-		CheckCircle2,
+		CheckCircle,
 		XCircle,
-		MinusCircle
+		Minus,
+		Info,
+		AlertCircle,
+		Calendar,
+		DollarSign
 	} from 'lucide-svelte';
 	import type { Trade, Instrument, Strategy, ChecklistTemplate } from '$lib/types';
+	import { generateAIAnalysis } from '$lib/utils/aiAnalyzer';
+	import type { AIInsight } from '$lib/utils/aiAnalyzer';
+	import { calculateAnalytics } from '$lib/utils/analytics';
 
 	let trades = $state<Trade[]>([]);
-	let filteredTrades = $state<Trade[]>([]);
 	let instruments = $state<Instrument[]>([]);
 	let strategies = $state<Strategy[]>([]);
 	let checklists = $state<ChecklistTemplate[]>([]);
+	let loading = $state(true);
 
-	let showModal = $state(false);
+	// Modal states
+	let showTradeModal = $state(false);
+	let showAnalysisModal = $state(false);
+	let showFilterPanel = $state(false);
 	let editingTrade = $state<Trade | null>(null);
-	let searchQuery = $state('');
+	let analyzingTrade = $state<Trade | null>(null);
+	let tradeAnalysis = $state<any>(null);
+	let loadingAnalysis = $state(false);
 
-	// Filter states
-	let filterType = $state<'all' | 'long' | 'short'>('all');
-	let filterOutcome = $state<'all' | 'win' | 'loss' | 'breakeven' | 'pending'>('all');
-	let filterStatus = $state<'all' | 'open' | 'closed' | 'partial'>('all');
-	let filterStrategy = $state<string>('all');
-	let filterDateFrom = $state('');
-	let filterDateTo = $state('');
-	let showFilters = $state(false);
-
+	// Form state
 	let formData = $state({
-		symbol: '',
 		instrumentId: '',
+		strategyId: '',
 		type: 'long' as 'long' | 'short',
+		status: 'open' as 'open' | 'closed' | 'partial',
 		entryPrice: '',
 		exitPrice: '',
-		lotSize: '',
-		quantity: '',
 		stopLoss: '',
 		takeProfit: '',
+		quantity: '1',
+		lotSize: '1',
+		fees: '0',
+		commissions: '0',
+		slippage: '0',
 		entryDate: '',
 		exitDate: '',
-		status: 'closed' as 'open' | 'closed' | 'partial',
-		fees: '',
-		commissions: '',
-		slippage: '',
-		strategyId: '',
+		timeOfDay: '' as '' | 'premarket' | 'morning' | 'midday' | 'afternoon' | 'afterhours',
+		marketCondition: '' as '' | 'trending' | 'ranging' | 'volatile' | 'quiet',
+		sessionQuality: 3,
 		emotion: 'neutral' as
 			| 'confident'
 			| 'fearful'
@@ -69,338 +68,316 @@
 			| 'disciplined'
 			| 'revenge'
 			| 'fomo',
-		timeOfDay: 'morning' as 'premarket' | 'morning' | 'midday' | 'afternoon' | 'afterhours',
-		marketCondition: 'trending' as 'trending' | 'ranging' | 'volatile' | 'quiet',
 		followedPlan: true,
-		sessionQuality: 3 as 1 | 2 | 3 | 4 | 5,
+		chartBeforeUrl: '',
+		chartAfterUrl: '',
 		preTradeNotes: '',
 		postTradeNotes: '',
 		notes: '',
-		tags: '',
 		mistakes: '',
 		lessonsLearned: '',
-		chartBeforeUrl: '',
-		chartAfterUrl: ''
+		tags: ''
 	});
 
+	// Checklist state
 	let checklistItems = $state<{ [key: string]: boolean }>({});
-	let calculatedPnL = $state<number>(0);
-	let calculatedNetPnL = $state<number>(0);
-	let calculatedRR = $state<number>(0);
-	let expectedRR = $state<number>(0);
 
-	$effect(() => {
-		loadTrades($selectedAccountId);
+	// Auto-calculated values
+	let selectedInstrument = $derived(instruments.find((i) => i.id === formData.instrumentId));
+
+	let autoCalculations = $derived(
+		(() => {
+			const entry = parseFloat(formData.entryPrice) || 0;
+			const exit = parseFloat(formData.exitPrice) || 0;
+			const stop = parseFloat(formData.stopLoss) || 0;
+			const target = parseFloat(formData.takeProfit) || 0;
+			const qty = parseFloat(formData.quantity) || 0;
+			const lot = parseFloat(formData.lotSize) || 1;
+			const fees = parseFloat(formData.fees) || 0;
+			const comm = parseFloat(formData.commissions) || 0;
+			const slip = parseFloat(formData.slippage) || 0;
+
+			// Calculate pip value if available
+			const pipValue = selectedInstrument?.pipValue || 1;
+			const contractSize = selectedInstrument?.contractSize || 1;
+
+			// Gross P&L
+			let grossPnl = 0;
+			if (entry && exit) {
+				if (formData.type === 'long') {
+					grossPnl = (exit - entry) * qty * lot * pipValue;
+				} else {
+					grossPnl = (entry - exit) * qty * lot * pipValue;
+				}
+			}
+
+			// Net P&L
+			const netPnl = grossPnl - fees - comm - slip;
+
+			// Expected R:R
+			let expectedRR = 0;
+			if (entry && stop && target) {
+				const risk = Math.abs(entry - stop);
+				const reward = Math.abs(target - entry);
+				expectedRR = risk > 0 ? reward / risk : 0;
+			}
+
+			// Actual R:R
+			let actualRR = 0;
+			if (entry && stop && exit) {
+				const risk = Math.abs(entry - stop);
+				const actualReward = formData.type === 'long' ? exit - entry : entry - exit;
+				actualRR = risk > 0 ? actualReward / risk : 0;
+			}
+
+			// Outcome
+			let outcome: 'win' | 'loss' | 'breakeven' | 'pending' = 'pending';
+			if (formData.status === 'closed' && exit) {
+				if (netPnl > 5) outcome = 'win';
+				else if (netPnl < -5) outcome = 'loss';
+				else outcome = 'breakeven';
+			}
+
+			return { grossPnl, netPnl, expectedRR, actualRR, outcome };
+		})()
+	);
+
+	// Filters
+	let filters = $state({
+		search: '',
+		type: 'all' as 'all' | 'long' | 'short',
+		outcome: 'all' as 'all' | 'win' | 'loss' | 'breakeven' | 'pending',
+		status: 'all' as 'all' | 'open' | 'closed' | 'partial',
+		strategyId: '',
+		dateFrom: '',
+		dateTo: '',
+		instrumentId: ''
 	});
 
-	$effect(() => {
-		filterTrades();
-	});
+	const activeFilterCount = $derived(
+		(() => {
+			let count = 0;
+			if (filters.search) count++;
+			if (filters.type !== 'all') count++;
+			if (filters.outcome !== 'all') count++;
+			if (filters.status !== 'all') count++;
+			if (filters.strategyId) count++;
+			if (filters.dateFrom) count++;
+			if (filters.dateTo) count++;
+			if (filters.instrumentId) count++;
+			return count;
+		})()
+	);
 
-	$effect(() => {
-		if (formData.entryPrice && formData.exitPrice && formData.lotSize && formData.quantity) {
-			const result = calculatePnL(
-				formData.type,
-				parseFloat(formData.entryPrice),
-				parseFloat(formData.exitPrice),
-				parseFloat(formData.lotSize),
-				parseFloat(formData.quantity),
-				parseFloat(formData.fees || '0'),
-				parseFloat(formData.commissions || '0'),
-				parseFloat(formData.slippage || '0')
-			);
-			calculatedPnL = result.pnl;
-			calculatedNetPnL = result.netPnl;
-		}
+	const filteredTrades = $derived(
+		(() => {
+			return trades.filter((trade) => {
+				// Search
+				if (filters.search) {
+					const search = filters.search.toLowerCase();
+					const matchesSearch =
+						trade.symbol.toLowerCase().includes(search) ||
+						trade.notes?.toLowerCase().includes(search) ||
+						trade.preTradeNotes?.toLowerCase().includes(search) ||
+						trade.postTradeNotes?.toLowerCase().includes(search);
+					if (!matchesSearch) return false;
+				}
 
-		if (formData.entryPrice && formData.stopLoss && formData.takeProfit) {
-			expectedRR = calculateRiskReward(
-				parseFloat(formData.entryPrice),
-				parseFloat(formData.stopLoss),
-				parseFloat(formData.takeProfit),
-				formData.type
-			);
-		}
+				// Type
+				if (filters.type !== 'all' && trade.type !== filters.type) return false;
 
-		if (formData.entryPrice && formData.exitPrice && formData.stopLoss) {
-			calculatedRR = calculateActualRR(
-				parseFloat(formData.entryPrice),
-				parseFloat(formData.exitPrice),
-				parseFloat(formData.stopLoss),
-				formData.type
-			);
-		}
-	});
+				// Outcome
+				if (filters.outcome !== 'all' && trade.outcome !== filters.outcome) return false;
+
+				// Status
+				if (filters.status !== 'all' && trade.status !== filters.status) return false;
+
+				// Strategy
+				if (filters.strategyId && trade.strategyId !== filters.strategyId) return false;
+
+				// Instrument
+				if (filters.instrumentId && trade.instrumentId !== filters.instrumentId) return false;
+
+				// Date range
+				if (filters.dateFrom) {
+					const tradeDate = new Date(trade.entryDate);
+					const fromDate = new Date(filters.dateFrom);
+					if (tradeDate < fromDate) return false;
+				}
+				if (filters.dateTo) {
+					const tradeDate = new Date(trade.exitDate || trade.entryDate);
+					const toDate = new Date(filters.dateTo);
+					if (tradeDate > toDate) return false;
+				}
+
+				return true;
+			});
+		})()
+	);
 
 	onMount(async () => {
-		await Promise.all([loadInstruments(), loadStrategies(), loadChecklists()]);
+		await loadData();
 	});
 
-	async function loadTrades(accountId: string) {
-		if (!accountId) return;
-
+	async function loadData() {
+		loading = true;
 		try {
-			const res = await fetch(`/api/trades?accountId=${accountId}`);
-			trades = await res.json();
-			filterTrades();
+			const [tradesRes, instrumentsRes, strategiesRes, checklistsRes] = await Promise.all([
+				fetch(`/api/trades?accountId=${$selectedAccountId}`),
+				fetch('/api/instruments'),
+				fetch('/api/strategies'),
+				fetch('/api/checklists')
+			]);
+
+			trades = await tradesRes.json();
+			instruments = await instrumentsRes.json();
+			strategies = await strategiesRes.json();
+			checklists = await checklistsRes.json();
 		} catch (error) {
-			console.error('Error loading trades:', error);
+			console.error('Error loading data:', error);
+		} finally {
+			loading = false;
 		}
 	}
 
-	async function loadInstruments() {
-		try {
-			const res = await fetch('/api/instruments');
-			instruments = await res.json();
-		} catch (error) {
-			console.error('Error loading instruments:', error);
-		}
-	}
-
-	async function loadStrategies() {
-		try {
-			const res = await fetch('/api/strategies');
-			strategies = await res.json();
-		} catch (error) {
-			console.error('Error loading strategies:', error);
-		}
-	}
-
-	async function loadChecklists() {
-		try {
-			const res = await fetch('/api/checklists');
-			checklists = await res.json();
-		} catch (error) {
-			console.error('Error loading checklists:', error);
-		}
-	}
-
-	function filterTrades() {
-		let result = trades;
-
-		if (filterType !== 'all') {
-			result = result.filter((t) => t.type === filterType);
-		}
-
-		if (filterOutcome !== 'all') {
-			result = result.filter((t) => t.outcome === filterOutcome);
-		}
-
-		if (filterStatus !== 'all') {
-			result = result.filter((t) => t.status === filterStatus);
-		}
-
-		if (filterStrategy !== 'all') {
-			result = result.filter((t) => t.strategyId === filterStrategy);
-		}
-
-		if (filterDateFrom) {
-			result = result.filter((t) => t.entryDate >= filterDateFrom);
-		}
-
-		if (filterDateTo) {
-			result = result.filter((t) => t.entryDate <= filterDateTo);
-		}
-
-		if (searchQuery) {
-			result = result.filter(
-				(t) =>
-					t.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
-					t.notes.toLowerCase().includes(searchQuery.toLowerCase())
-			);
-		}
-
-		filteredTrades = result.sort((a, b) => {
-			const dateA = a.exitDate || a.entryDate;
-			const dateB = b.exitDate || b.entryDate;
-			return new Date(dateB).getTime() - new Date(dateA).getTime();
-		});
-	}
-
-	function resetFilters() {
-		filterType = 'all';
-		filterOutcome = 'all';
-		filterStatus = 'all';
-		filterStrategy = 'all';
-		filterDateFrom = '';
-		filterDateTo = '';
-		searchQuery = '';
-	}
-
-	function openAddModal() {
+	function openAddTradeModal() {
 		editingTrade = null;
+		const now = new Date();
+		const dateStr = now.toISOString().slice(0, 16);
+
 		formData = {
-			symbol: '',
 			instrumentId: '',
+			strategyId: '',
 			type: 'long',
+			status: 'open',
 			entryPrice: '',
 			exitPrice: '',
-			lotSize: '1',
-			quantity: '',
 			stopLoss: '',
 			takeProfit: '',
-			entryDate: '',
-			exitDate: '',
-			status: 'closed',
+			quantity: '1',
+			lotSize: '1',
 			fees: '0',
 			commissions: '0',
 			slippage: '0',
-			strategyId: '',
-			emotion: 'neutral',
-			timeOfDay: 'morning',
-			marketCondition: 'trending',
-			followedPlan: true,
+			entryDate: dateStr,
+			exitDate: '',
+			timeOfDay: '',
+			marketCondition: '',
 			sessionQuality: 3,
+			emotion: 'neutral',
+			followedPlan: true,
+			chartBeforeUrl: '',
+			chartAfterUrl: '',
 			preTradeNotes: '',
 			postTradeNotes: '',
 			notes: '',
-			tags: '',
 			mistakes: '',
 			lessonsLearned: '',
-			chartBeforeUrl: '',
-			chartAfterUrl: ''
+			tags: ''
 		};
+
+		// Reset checklist
 		checklistItems = {};
-		showModal = true;
+		if (checklists.length > 0 && checklists[0].items) {
+			checklists[0].items.forEach((item) => {
+				checklistItems[item.id] = false;
+			});
+		}
+
+		showTradeModal = true;
 	}
 
-	function openEditModal(trade: Trade) {
+	function openEditTradeModal(trade: Trade) {
 		editingTrade = trade;
 		formData = {
-			symbol: trade.symbol,
 			instrumentId: trade.instrumentId,
+			strategyId: trade.strategyId || '',
 			type: trade.type,
+			status: trade.status,
 			entryPrice: trade.entryPrice.toString(),
 			exitPrice: trade.exitPrice?.toString() || '',
-			lotSize: trade.lotSize.toString(),
-			quantity: trade.quantity.toString(),
 			stopLoss: trade.stopLoss.toString(),
 			takeProfit: trade.takeProfit.toString(),
-			entryDate: trade.entryDate.split('T')[0],
-			exitDate: trade.exitDate?.split('T')[0] || '',
-			status: trade.status,
+			quantity: trade.quantity.toString(),
+			lotSize: trade.lotSize.toString(),
 			fees: trade.fees.toString(),
 			commissions: trade.commissions.toString(),
 			slippage: trade.slippage.toString(),
-			strategyId: trade.strategyId,
-			emotion: trade.emotion,
+			entryDate: trade.entryDate.slice(0, 16),
+			exitDate: trade.exitDate?.slice(0, 16) || '',
 			timeOfDay: trade.timeOfDay,
 			marketCondition: trade.marketCondition,
-			followedPlan: trade.followedPlan,
 			sessionQuality: trade.sessionQuality,
-			preTradeNotes: trade.preTradeNotes,
-			postTradeNotes: trade.postTradeNotes,
-			notes: trade.notes,
-			tags: trade.tags.join(', '),
-			mistakes: trade.mistakes,
-			lessonsLearned: trade.lessonsLearned,
+			emotion: trade.emotion,
+			followedPlan: trade.followedPlan,
 			chartBeforeUrl: trade.chartBeforeUrl || '',
-			chartAfterUrl: trade.chartAfterUrl || ''
+			chartAfterUrl: trade.chartAfterUrl || '',
+			preTradeNotes: trade.preTradeNotes || '',
+			postTradeNotes: trade.postTradeNotes || '',
+			notes: trade.notes || '',
+			mistakes: trade.mistakes || '',
+			lessonsLearned: trade.lessonsLearned || '',
+			tags: trade.tags.join(', ')
 		};
-		checklistItems = trade.checklistItems || {};
-		showModal = true;
-	}
 
-	async function handleChartUrlBlur(field: 'before' | 'after') {
-		const url = field === 'before' ? formData.chartBeforeUrl : formData.chartAfterUrl;
-		if (url && url.includes('tradingview.com')) {
-			const thumbnail = await getTradingViewThumbnail(url);
-			// Store thumbnail URL (in real implementation, you'd save this)
-		}
+		checklistItems = { ...trade.checklistItems };
+
+		showTradeModal = true;
 	}
 
 	async function handleSubmit() {
-		const entryPrice = parseFloat(formData.entryPrice);
-		const exitPrice = formData.exitPrice ? parseFloat(formData.exitPrice) : null;
-		const lotSize = parseFloat(formData.lotSize);
-		const quantity = parseFloat(formData.quantity);
-		const stopLoss = parseFloat(formData.stopLoss);
-		const takeProfit = parseFloat(formData.takeProfit);
-		const fees = parseFloat(formData.fees || '0');
-		const commissions = parseFloat(formData.commissions || '0');
-		const slippage = parseFloat(formData.slippage || '0');
-
-		let pnl = 0;
-		let pnlPercentage = 0;
-		let netPnl = 0;
-		let outcome: 'win' | 'loss' | 'breakeven' | 'pending' = 'pending';
-		let actualRR = 0;
-
-		if (exitPrice && formData.status === 'closed') {
-			const result = calculatePnL(
-				formData.type,
-				entryPrice,
-				exitPrice,
-				lotSize,
-				quantity,
-				fees,
-				commissions,
-				slippage
-			);
-			pnl = result.pnl;
-			pnlPercentage = result.pnlPercentage;
-			netPnl = result.netPnl;
-			outcome = determineOutcome(netPnl);
-			actualRR = calculateActualRR(entryPrice, exitPrice, stopLoss, formData.type);
+		if (!selectedInstrument) {
+			alert('Please select an instrument');
+			return;
 		}
 
-		const expectedRRValue = calculateRiskReward(entryPrice, stopLoss, takeProfit, formData.type);
-
-		const checklistCompleted = Object.values(checklistItems).every((v) => v);
-
-		const chartBeforeThumbnail = formData.chartBeforeUrl
-			? await getTradingViewThumbnail(formData.chartBeforeUrl)
-			: undefined;
-
-		const chartAfterThumbnail = formData.chartAfterUrl
-			? await getTradingViewThumbnail(formData.chartAfterUrl)
-			: undefined;
+		const calc = autoCalculations;
+		const checklistCompleted =
+			checklists.length > 0
+				? Object.keys(checklistItems).length > 0 && Object.values(checklistItems).every(Boolean)
+				: false;
 
 		const tradeData = {
 			accountId: $selectedAccountId,
-			symbol: formData.symbol.toUpperCase(),
+			symbol: selectedInstrument.symbol,
 			instrumentId: formData.instrumentId,
+			strategyId: formData.strategyId || undefined,
 			type: formData.type,
-			entryPrice,
-			exitPrice,
-			lotSize,
-			quantity,
-			stopLoss,
-			takeProfit,
-			expectedRR: expectedRRValue,
-			actualRR,
-			entryDate: new Date(formData.entryDate).toISOString(),
-			exitDate: formData.exitDate ? new Date(formData.exitDate).toISOString() : null,
 			status: formData.status,
-			outcome,
-			pnl,
-			pnlPercentage,
-			fees,
-			commissions,
-			slippage,
-			netPnl,
-			notes: formData.notes,
-			preTradeNotes: formData.preTradeNotes,
-			postTradeNotes: formData.postTradeNotes,
+			entryPrice: parseFloat(formData.entryPrice),
+			exitPrice: formData.exitPrice ? parseFloat(formData.exitPrice) : undefined,
+			stopLoss: parseFloat(formData.stopLoss),
+			takeProfit: parseFloat(formData.takeProfit),
+			quantity: parseFloat(formData.quantity),
+			lotSize: parseFloat(formData.lotSize),
+			fees: parseFloat(formData.fees),
+			commissions: parseFloat(formData.commissions),
+			slippage: parseFloat(formData.slippage),
+			grossPnl: calc.grossPnl,
+			netPnl: calc.netPnl,
+			expectedRR: calc.expectedRR,
+			actualRR: calc.actualRR,
+			outcome: calc.outcome,
+			entryDate: formData.entryDate,
+			exitDate: formData.exitDate || undefined,
+			timeOfDay: formData.timeOfDay || undefined,
+			marketCondition: formData.marketCondition || undefined,
+			sessionQuality: formData.sessionQuality,
+			emotion: formData.emotion,
+			followedPlan: formData.followedPlan,
+			chartBeforeUrl: formData.chartBeforeUrl || undefined,
+			chartAfterUrl: formData.chartAfterUrl || undefined,
+			preTradeNotes: formData.preTradeNotes || undefined,
+			postTradeNotes: formData.postTradeNotes || undefined,
+			notes: formData.notes || undefined,
+			mistakes: formData.mistakes || undefined,
+			lessonsLearned: formData.lessonsLearned || undefined,
 			tags: formData.tags
 				.split(',')
 				.map((t) => t.trim())
 				.filter(Boolean),
-			strategyId: formData.strategyId,
-			emotion: formData.emotion,
-			timeOfDay: formData.timeOfDay,
-			marketCondition: formData.marketCondition,
-			followedPlan: formData.followedPlan,
-			sessionQuality: formData.sessionQuality,
-			mistakes: formData.mistakes,
-			lessonsLearned: formData.lessonsLearned,
-			chartBeforeUrl: formData.chartBeforeUrl || undefined,
-			chartAfterUrl: formData.chartAfterUrl || undefined,
-			chartBeforeThumbnail,
-			chartAfterThumbnail,
-			checklistCompleted,
 			checklistItems,
-			partialExits: []
+			checklistCompleted
 		};
 
 		try {
@@ -418,10 +395,11 @@
 				});
 			}
 
-			showModal = false;
-			await loadTrades($selectedAccountId);
+			showTradeModal = false;
+			await loadData();
 		} catch (error) {
 			console.error('Error saving trade:', error);
+			alert('Error saving trade. Please try again.');
 		}
 	}
 
@@ -435,22 +413,61 @@
 				body: JSON.stringify({ id })
 			});
 
-			await loadTrades($selectedAccountId);
+			await loadData();
 		} catch (error) {
 			console.error('Error deleting trade:', error);
 		}
 	}
 
+	async function analyzeTrade(trade: Trade) {
+		analyzingTrade = trade;
+		loadingAnalysis = true;
+		showAnalysisModal = true;
+		tradeAnalysis = null;
+
+		try {
+			tradeAnalysis = await generateAIAnalysis(
+				trades,
+				accounts,
+				strategies,
+				checklists,
+				calculateAnalytics(trades)
+			);
+		} catch (error) {
+			console.error('Error analyzing trade:', error);
+			alert('Error analyzing trade. Please try again.');
+		} finally {
+			loadingAnalysis = false;
+		}
+	}
+
+	function clearFilters() {
+		filters = {
+			search: '',
+			type: 'all',
+			outcome: 'all',
+			status: 'all',
+			strategyId: '',
+			dateFrom: '',
+			dateTo: '',
+			instrumentId: ''
+		};
+	}
+
+	function formatCurrency(value: number) {
+		return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+	}
+
 	function getOutcomeIcon(outcome: string) {
 		switch (outcome) {
 			case 'win':
-				return CheckCircle2;
+				return CheckCircle;
 			case 'loss':
 				return XCircle;
 			case 'breakeven':
-				return MinusCircle;
+				return Minus;
 			default:
-				return MinusCircle;
+				return AlertCircle;
 		}
 	}
 
@@ -460,8 +477,10 @@
 				return 'text-profit';
 			case 'loss':
 				return 'text-loss';
+			case 'breakeven':
+				return 'text-gray-600';
 			default:
-				return 'text-gray-500';
+				return 'text-yellow-600';
 		}
 	}
 </script>
@@ -470,284 +489,89 @@
 	<title>Trade Log - TradeJournal</title>
 </svelte:head>
 
-<div class="p-8">
-	<!-- Header -->
-	<div class="mb-8 flex items-center justify-between">
-		<div>
-			<h1 class="mb-2 text-3xl font-bold text-gray-900">Trade Log</h1>
-			<p class="text-gray-600">Track and manage all your trades</p>
-		</div>
-		<button onclick={openAddModal} class="btn btn-primary flex items-center gap-2">
-			<Plus class="h-5 w-5" />
-			Add Trade
-		</button>
-	</div>
-
-	<!-- Filters -->
-	<div class="card mb-6">
-		<div class="flex flex-col gap-4">
-			<!-- Search and Filter Toggle -->
-			<div class="flex gap-4">
-				<div class="relative flex-1">
-					<Search
-						class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 transform text-gray-400"
-					/>
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder="Search by symbol or notes..."
-						class="input pl-10"
-					/>
+<div>
+	<div class="p-8">
+		<!-- Header -->
+		<div class="mb-8">
+			<div class="flex items-center justify-between">
+				<div>
+					<h1 class="mb-2 text-3xl font-bold text-gray-900">Trade Log</h1>
+					<p class="text-gray-600">Track and analyze all your trades</p>
 				</div>
 				<button
-					onclick={() => (showFilters = !showFilters)}
+					type="button"
+					onclick={openAddTradeModal}
+					class="btn btn-primary flex items-center gap-2"
+				>
+					<Plus class="h-5 w-5" />
+					Add Trade
+				</button>
+			</div>
+		</div>
+
+		<!-- Filters Bar -->
+		<div class="card mb-6">
+			<div class="flex flex-wrap items-center gap-4">
+				<!-- Search -->
+				<div class="min-w-[200px] flex-1">
+					<div class="relative">
+						<Search
+							class="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 transform text-gray-400"
+						/>
+						<input
+							type="text"
+							bind:value={filters.search}
+							placeholder="Search by symbol or notes..."
+							class="input pl-10"
+						/>
+					</div>
+				</div>
+
+				<!-- Advanced Filters Toggle -->
+				<button
+					type="button"
+					onclick={() => (showFilterPanel = !showFilterPanel)}
 					class="btn btn-secondary flex items-center gap-2"
 				>
-					<Filter class="h-5 w-5" />
+					<Filter class="h-4 w-4" />
 					Filters
-					{#if filterType !== 'all' || filterOutcome !== 'all' || filterStatus !== 'all' || filterStrategy !== 'all' || filterDateFrom || filterDateTo}
+					{#if activeFilterCount > 0}
 						<span
-							class="bg-primary-600 flex h-5 w-5 items-center justify-center rounded-full text-xs text-white"
+							class="bg-primary-600 inline-flex h-5 w-5 items-center justify-center rounded-full text-xs font-bold text-white"
 						>
-							{[
-								filterType !== 'all',
-								filterOutcome !== 'all',
-								filterStatus !== 'all',
-								filterStrategy !== 'all',
-								filterDateFrom,
-								filterDateTo
-							].filter(Boolean).length}
+							{activeFilterCount}
 						</span>
 					{/if}
 				</button>
-			</div>
 
-			<!-- Expanded Filters -->
-			{#if showFilters}
-				<div
-					class="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4 md:grid-cols-3 lg:grid-cols-6"
-				>
-					<div>
-						<label class="label">Type</label>
-						<select bind:value={filterType} class="select">
-							<option value="all">All</option>
-							<option value="long">Long</option>
-							<option value="short">Short</option>
-						</select>
-					</div>
-
-					<div>
-						<label class="label">Outcome</label>
-						<select bind:value={filterOutcome} class="select">
-							<option value="all">All</option>
-							<option value="win">Win</option>
-							<option value="loss">Loss</option>
-							<option value="breakeven">Breakeven</option>
-							<option value="pending">Pending</option>
-						</select>
-					</div>
-
-					<div>
-						<label class="label">Status</label>
-						<select bind:value={filterStatus} class="select">
-							<option value="all">All</option>
-							<option value="open">Open</option>
-							<option value="closed">Closed</option>
-							<option value="partial">Partial</option>
-						</select>
-					</div>
-
-					<div>
-						<label class="label">Strategy</label>
-						<select bind:value={filterStrategy} class="select">
-							<option value="all">All</option>
-							{#each strategies as strategy}
-								<option value={strategy.id}>{strategy.name}</option>
-							{/each}
-						</select>
-					</div>
-
-					<div>
-						<label class="label">From Date</label>
-						<input type="date" bind:value={filterDateFrom} class="input" />
-					</div>
-
-					<div>
-						<label class="label">To Date</label>
-						<input type="date" bind:value={filterDateTo} class="input" />
-					</div>
-
-					<div class="col-span-full flex justify-end gap-2">
-						<button onclick={resetFilters} class="btn btn-secondary"> Clear Filters </button>
-					</div>
-				</div>
-			{/if}
-		</div>
-	</div>
-
-	<!-- Trades Table -->
-	<div class="card overflow-x-auto">
-		{#if filteredTrades.length === 0}
-			<div class="py-12 text-center text-gray-500">
-				No trades found. Click "Add Trade" to get started.
-			</div>
-		{:else}
-			<table class="w-full">
-				<thead>
-					<tr class="border-b border-gray-200">
-						<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Date</th>
-						<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Symbol</th>
-						<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Type</th>
-						<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Entry</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Exit</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Qty</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">R:R</th>
-						<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Result</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Net P&L</th>
-						<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
-					</tr>
-				</thead>
-				<tbody>
-					{#each filteredTrades as trade}
-						<tr class="border-b border-gray-100 hover:bg-gray-50">
-							<td class="px-4 py-3 text-sm text-gray-900">
-								{new Date(trade.entryDate).toLocaleDateString()}
-							</td>
-							<td class="px-4 py-3 text-sm font-medium text-gray-900">
-								{trade.symbol}
-							</td>
-							<td class="px-4 py-3">
-								<span
-									class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {trade.type ===
-									'long'
-										? 'bg-green-100 text-green-800'
-										: 'bg-red-100 text-red-800'}"
-								>
-									{trade.type.toUpperCase()}
-								</span>
-							</td>
-							<td class="px-4 py-3">
-								<span
-									class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {trade.status ===
-									'open'
-										? 'bg-blue-100 text-blue-800'
-										: trade.status === 'closed'
-											? 'bg-gray-100 text-gray-800'
-											: 'bg-yellow-100 text-yellow-800'}"
-								>
-									{trade.status.toUpperCase()}
-								</span>
-							</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-900">
-								${trade.entryPrice.toFixed(2)}
-							</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-900">
-								{trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : '-'}
-							</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-900">
-								{trade.quantity}
-							</td>
-							<td class="px-4 py-3 text-right text-sm text-gray-900">
-								{trade.actualRR > 0 ? trade.actualRR.toFixed(2) : '-'}
-							</td>
-							<td class="px-4 py-3">
-								<div class="flex items-center gap-1 {getOutcomeColor(trade.outcome)}">
-									<svelte:component this={getOutcomeIcon(trade.outcome)} class="h-4 w-4" />
-									<span class="text-xs font-medium uppercase">{trade.outcome}</span>
-								</div>
-							</td>
-							<td
-								class="px-4 py-3 text-right text-sm font-semibold {trade.netPnl >= 0
-									? 'text-profit'
-									: 'text-loss'}"
-							>
-								{formatCurrency(trade.netPnl)}
-							</td>
-							<td class="px-4 py-3 text-right">
-								<div class="flex items-center justify-end gap-2">
-									<button
-										onclick={() => openEditModal(trade)}
-										class="hover:text-primary-600 p-1 text-gray-600 transition-colors"
-									>
-										<Edit class="h-4 w-4" />
-									</button>
-									<button
-										onclick={() => deleteTrade(trade.id)}
-										class="p-1 text-gray-600 transition-colors hover:text-red-600"
-									>
-										<Trash2 class="h-4 w-4" />
-									</button>
-								</div>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
-		{/if}
-	</div>
-</div>
-
-<!-- Add/Edit Trade Modal -->
-{#if showModal}
-	<div
-		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"
-	>
-		<div class="my-8 w-full max-w-4xl rounded-lg bg-white">
-			<div class="sticky top-0 z-10 rounded-t-lg border-b border-gray-200 bg-white p-6">
-				<div class="flex items-center justify-between">
-					<h2 class="text-xl font-bold text-gray-900">
-						{editingTrade ? 'Edit Trade' : 'Add New Trade'}
-					</h2>
-					<button onclick={() => (showModal = false)} class="text-gray-400 hover:text-gray-600">
-						<X class="h-6 w-6" />
+				{#if activeFilterCount > 0}
+					<button
+						type="button"
+						onclick={clearFilters}
+						class="text-sm text-gray-600 hover:text-gray-800"
+					>
+						Clear all
 					</button>
-				</div>
+				{/if}
 			</div>
 
-			<form
-				onsubmit={(e) => {
-					e.preventDefault();
-					handleSubmit();
-				}}
-				class="max-h-[calc(100vh-200px)] space-y-6 overflow-y-auto p-6"
-			>
-				<!-- Basic Information -->
-				<div>
-					<h3 class="mb-4 text-lg font-semibold text-gray-900">Basic Information</h3>
-					<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+			<!-- Advanced Filter Panel -->
+			{#if showFilterPanel}
+				<div class="mt-4 border-t border-gray-200 pt-4">
+					<div class="mb-4 grid grid-cols-2 gap-4 md:grid-cols-4">
 						<div>
-							<label class="label">Instrument *</label>
-							<select bind:value={formData.instrumentId} required class="select">
-								<option value="">Select Instrument...</option>
-								{#each instruments as instrument}
-									<option value={instrument.id}>{instrument.symbol} - {instrument.name}</option>
-								{/each}
-							</select>
-							<p class="mt-1 text-xs text-gray-500">The symbol/asset you traded</p>
-						</div>
-
-						<div>
-							<label class="label">Strategy</label>
-							<select bind:value={formData.strategyId} class="select">
-								<option value="">Select...</option>
-								{#each strategies as strategy}
-									<option value={strategy.id}>{strategy.name}</option>
-								{/each}
-							</select>
-						</div>
-
-						<div>
-							<label class="label">Type *</label>
-							<select bind:value={formData.type} required class="select">
+							<label class="label">Type</label>
+							<select bind:value={filters.type} class="select">
+								<option value="all">All Types</option>
 								<option value="long">Long</option>
 								<option value="short">Short</option>
 							</select>
 						</div>
 
 						<div>
-							<label class="label">Status *</label>
-							<select bind:value={formData.status} required class="select">
+							<label class="label">Status</label>
+							<select bind:value={filters.status} class="select">
+								<option value="all">All Status</option>
 								<option value="open">Open</option>
 								<option value="closed">Closed</option>
 								<option value="partial">Partial</option>
@@ -755,314 +579,790 @@
 						</div>
 
 						<div>
-							<label class="label">Emotion</label>
-							<select bind:value={formData.emotion} class="select">
-								<option value="confident">Confident</option>
-								<option value="fearful">Fearful</option>
-								<option value="greedy">Greedy</option>
-								<option value="neutral">Neutral</option>
-								<option value="disciplined">Disciplined</option>
-								<option value="revenge">Revenge</option>
-								<option value="fomo">FOMO</option>
+							<label class="label">Outcome</label>
+							<select bind:value={filters.outcome} class="select">
+								<option value="all">All Outcomes</option>
+								<option value="win">Wins</option>
+								<option value="loss">Losses</option>
+								<option value="breakeven">Breakeven</option>
+								<option value="pending">Pending</option>
 							</select>
+						</div>
+
+						<div>
+							<label class="label">Instrument</label>
+							<select bind:value={filters.instrumentId} class="select">
+								<option value="">All Instruments</option>
+								{#each instruments as instrument}
+									<option value={instrument.id}>{instrument.symbol}</option>
+								{/each}
+							</select>
+						</div>
+
+						<div>
+							<label class="label">Strategy</label>
+							<select bind:value={filters.strategyId} class="select">
+								<option value="">All Strategies</option>
+								{#each strategies as strategy}
+									<option value={strategy.id}>{strategy.name}</option>
+								{/each}
+							</select>
+						</div>
+
+						<div>
+							<label class="label">From Date</label>
+							<input type="date" bind:value={filters.dateFrom} class="input" />
+						</div>
+
+						<div>
+							<label class="label">To Date</label>
+							<input type="date" bind:value={filters.dateTo} class="input" />
 						</div>
 					</div>
 				</div>
+			{/if}
+		</div>
 
-				<!-- Trade Details -->
-				<div>
-					<h3 class="mb-4 text-lg font-semibold text-gray-900">Trade Details</h3>
-					<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+		<!-- Trades Table -->
+		<div class="card">
+			{#if loading}
+				<div class="py-12 text-center text-gray-500">Loading trades...</div>
+			{:else if filteredTrades.length === 0}
+				<div class="py-12 text-center">
+					<p class="mb-4 text-gray-500">
+						{activeFilterCount > 0 ? 'No trades match your filters' : 'No trades yet'}
+					</p>
+					{#if activeFilterCount === 0}
+						<button type="button" onclick={openAddTradeModal} class="btn btn-primary">
+							Add Your First Trade
+						</button>
+					{:else}
+						<button type="button" onclick={clearFilters} class="btn btn-secondary">
+							Clear Filters
+						</button>
+					{/if}
+				</div>
+			{:else}
+				<div class="overflow-x-auto">
+					<table class="w-full">
+						<thead>
+							<tr class="border-b border-gray-200">
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Date</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Instrument</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Type</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Status</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Entry</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Exit</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Qty</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">R:R</th>
+								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Outcome</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Net P&L</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each filteredTrades as trade}
+								<tr class="border-b border-gray-100 transition-colors hover:bg-gray-50">
+									<td class="px-4 py-3 text-sm text-gray-900">
+										{new Date(trade.exitDate || trade.entryDate).toLocaleDateString()}
+									</td>
+									<td class="px-4 py-3 text-sm font-medium text-gray-900">
+										{trade.symbol}
+									</td>
+									<td class="px-4 py-3">
+										<span
+											class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {trade.type ===
+											'long'
+												? 'bg-green-100 text-green-800'
+												: 'bg-red-100 text-red-800'}"
+										>
+											{trade.type.toUpperCase()}
+										</span>
+									</td>
+									<td class="px-4 py-3">
+										<span
+											class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {trade.status ===
+											'open'
+												? 'bg-blue-100 text-blue-800'
+												: trade.status === 'closed'
+													? 'bg-gray-100 text-gray-800'
+													: 'bg-yellow-100 text-yellow-800'}"
+										>
+											{trade.status.toUpperCase()}
+										</span>
+									</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">
+										${trade.entryPrice.toFixed(2)}
+									</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">
+										{trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : '-'}
+									</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">
+										{trade.quantity}
+									</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">
+										{trade.actualRR > 0 ? trade.actualRR.toFixed(2) : '-'}
+									</td>
+									<td class="px-4 py-3">
+										<div class="flex items-center gap-1">
+											<svelte:component
+												this={getOutcomeIcon(trade.outcome)}
+												class="h-4 w-4 {getOutcomeColor(trade.outcome)}"
+											/>
+											<span class="text-xs font-medium {getOutcomeColor(trade.outcome)}">
+												{trade.outcome.toUpperCase()}
+											</span>
+										</div>
+									</td>
+									<td
+										class="px-4 py-3 text-right text-sm font-semibold {trade.netPnl >= 0
+											? 'text-profit'
+											: 'text-loss'}"
+									>
+										{formatCurrency(trade.netPnl)}
+									</td>
+									<td class="px-4 py-3 text-right">
+										<div class="flex items-center justify-end gap-2">
+											<button
+												type="button"
+												onclick={() => analyzeTrade(trade)}
+												class="p-1 text-purple-600 transition-colors hover:text-purple-800"
+												title="AI Analysis"
+											>
+												<Sparkles class="h-4 w-4" />
+											</button>
+											<button
+												type="button"
+												onclick={() => openEditTradeModal(trade)}
+												class="hover:text-primary-600 p-1 text-gray-600 transition-colors"
+												title="Edit"
+											>
+												<Edit class="h-4 w-4" />
+											</button>
+											<button
+												type="button"
+												onclick={() => deleteTrade(trade.id)}
+												class="p-1 text-gray-600 transition-colors hover:text-red-600"
+												title="Delete"
+											>
+												<Trash2 class="h-4 w-4" />
+											</button>
+										</div>
+									</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+
+				<div class="mt-4 text-sm text-gray-600">
+					Showing {filteredTrades.length} of {trades.length} trades
+				</div>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Trade Modal -->
+	{#if showTradeModal}
+		<div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+			<div class="my-8 w-full max-w-5xl rounded-lg bg-white">
+				<!-- Modal Header -->
+				<div class="sticky top-0 z-10 rounded-t-lg border-b border-gray-200 bg-white p-6">
+					<div class="flex items-center justify-between">
 						<div>
-							<label class="label">Entry Price *</label>
-							<input
-								type="number"
-								step="0.01"
-								bind:value={formData.entryPrice}
-								required
-								class="input"
-							/>
+							<h2 class="text-xl font-bold text-gray-900">
+								{editingTrade ? 'Edit Trade' : 'Add New Trade'}
+							</h2>
+							<p class="mt-1 text-sm text-gray-500">
+								{selectedInstrument
+									? `Trading ${selectedInstrument.symbol}`
+									: 'Select an instrument to begin'}
+							</p>
 						</div>
+						<button
+							type="button"
+							onclick={() => (showTradeModal = false)}
+							class="text-gray-400 hover:text-gray-600"
+						>
+							<X class="h-6 w-6" />
+						</button>
+					</div>
+				</div>
 
-						<div>
-							<label class="label">Exit Price</label>
-							<input type="number" step="0.01" bind:value={formData.exitPrice} class="input" />
-						</div>
+				<form
+					onsubmit={(e) => {
+						e.preventDefault();
+						handleSubmit();
+					}}
+					class="space-y-6 p-6"
+				>
+					<!-- Instrument Selection (First & Most Important) -->
+					<div class="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+						<h3 class="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+							<Info class="h-5 w-5 text-blue-600" />
+							Step 1: Select Instrument
+						</h3>
+						<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+							<div>
+								<label class="label">Instrument *</label>
+								<select bind:value={formData.instrumentId} required class="select">
+									<option value="">Choose what you're trading...</option>
+									{#each instruments as instrument}
+										<option value={instrument.id}>
+											{instrument.symbol} - {instrument.name} ({instrument.type})
+										</option>
+									{/each}
+								</select>
+								<p class="mt-1 text-xs text-blue-700">
+									All instrument details are pulled automatically from Settings
+								</p>
+							</div>
 
-						<div>
-							<label class="label">Stop Loss *</label>
-							<input
-								type="number"
-								step="0.01"
-								bind:value={formData.stopLoss}
-								required
-								class="input"
-							/>
-						</div>
-
-						<div>
-							<label class="label">Take Profit *</label>
-							<input
-								type="number"
-								step="0.01"
-								bind:value={formData.takeProfit}
-								required
-								class="input"
-							/>
-						</div>
-
-						<div>
-							<label class="label">Lot Size *</label>
-							<input
-								type="number"
-								step="0.01"
-								bind:value={formData.lotSize}
-								required
-								class="input"
-							/>
-						</div>
-
-						<div>
-							<label class="label">Quantity *</label>
-							<input
-								type="number"
-								step="0.01"
-								bind:value={formData.quantity}
-								required
-								class="input"
-							/>
-						</div>
-
-						<div>
-							<label class="label">Fees</label>
-							<input type="number" step="0.01" bind:value={formData.fees} class="input" />
-						</div>
-
-						<div>
-							<label class="label">Commissions</label>
-							<input type="number" step="0.01" bind:value={formData.commissions} class="input" />
-						</div>
-
-						<div>
-							<label class="label">Slippage</label>
-							<input type="number" step="0.01" bind:value={formData.slippage} class="input" />
-						</div>
-
-						<div>
-							<label class="label">Entry Date *</label>
-							<input type="date" bind:value={formData.entryDate} required class="input" />
-						</div>
-
-						<div>
-							<label class="label">Exit Date</label>
-							<input type="date" bind:value={formData.exitDate} class="input" />
+							{#if selectedInstrument}
+								<div class="rounded-lg border border-blue-200 bg-white p-3">
+									<div class="space-y-1 text-xs text-gray-600">
+										<div><span class="font-medium">Type:</span> {selectedInstrument.type}</div>
+										<div>
+											<span class="font-medium">Exchange:</span>
+											{selectedInstrument.exchange || 'N/A'}
+										</div>
+										{#if selectedInstrument.pipValue}
+											<div>
+												<span class="font-medium">Pip Value:</span> ${selectedInstrument.pipValue}
+											</div>
+										{/if}
+										{#if selectedInstrument.contractSize}
+											<div>
+												<span class="font-medium">Contract:</span>
+												{selectedInstrument.contractSize}
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/if}
 						</div>
 					</div>
 
-					<!-- Calculated Values -->
-					{#if formData.entryPrice && formData.exitPrice}
-						<div class="mt-4 rounded-lg bg-gray-50 p-4">
-							<div class="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
-								<div>
-									<span class="text-gray-600">Gross P&L:</span>
-									<span
-										class="ml-2 font-semibold {calculatedPnL >= 0 ? 'text-profit' : 'text-loss'}"
+					<!-- Basic Trade Info -->
+					<div>
+						<h3 class="mb-4 text-lg font-semibold text-gray-900">Trade Details</h3>
+						<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+							<div>
+								<label class="label">Type *</label>
+								<select bind:value={formData.type} required class="select">
+									<option value="long">Long (Buy)</option>
+									<option value="short">Short (Sell)</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="label">Status *</label>
+								<select bind:value={formData.status} required class="select">
+									<option value="open">Open</option>
+									<option value="closed">Closed</option>
+									<option value="partial">Partial</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="label">Strategy</label>
+								<select bind:value={formData.strategyId} class="select">
+									<option value="">None</option>
+									{#each strategies as strategy}
+										<option value={strategy.id}>{strategy.name}</option>
+									{/each}
+								</select>
+							</div>
+
+							<div>
+								<label class="label">Emotion</label>
+								<select bind:value={formData.emotion} class="select">
+									<option value="disciplined">Disciplined</option>
+									<option value="confident">Confident</option>
+									<option value="neutral">Neutral</option>
+									<option value="fearful">Fearful</option>
+									<option value="greedy">Greedy</option>
+									<option value="revenge">Revenge</option>
+									<option value="fomo">FOMO</option>
+								</select>
+							</div>
+						</div>
+					</div>
+
+					<!-- Prices -->
+					<div>
+						<h3 class="mb-4 text-lg font-semibold text-gray-900">Price Levels</h3>
+						<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+							<div>
+								<label class="label">Entry Price *</label>
+								<input
+									type="number"
+									step="0.0001"
+									bind:value={formData.entryPrice}
+									required
+									class="input"
+									placeholder="0.00"
+								/>
+							</div>
+
+							<div>
+								<label class="label">Stop Loss *</label>
+								<input
+									type="number"
+									step="0.0001"
+									bind:value={formData.stopLoss}
+									required
+									class="input"
+									placeholder="0.00"
+								/>
+							</div>
+
+							<div>
+								<label class="label">Take Profit *</label>
+								<input
+									type="number"
+									step="0.0001"
+									bind:value={formData.takeProfit}
+									required
+									class="input"
+									placeholder="0.00"
+								/>
+							</div>
+
+							<div>
+								<label class="label">Exit Price</label>
+								<input
+									type="number"
+									step="0.0001"
+									bind:value={formData.exitPrice}
+									class="input"
+									placeholder="0.00"
+								/>
+							</div>
+						</div>
+					</div>
+
+					<!-- Position Size & Costs -->
+					<div>
+						<h3 class="mb-4 text-lg font-semibold text-gray-900">Position & Costs</h3>
+						<div class="grid grid-cols-2 gap-4 md:grid-cols-5">
+							<div>
+								<label class="label">Quantity *</label>
+								<input
+									type="number"
+									step="0.01"
+									bind:value={formData.quantity}
+									required
+									class="input"
+								/>
+							</div>
+
+							<div>
+								<label class="label">Lot Size</label>
+								<input type="number" step="0.01" bind:value={formData.lotSize} class="input" />
+							</div>
+
+							<div>
+								<label class="label">Fees ($)</label>
+								<input type="number" step="0.01" bind:value={formData.fees} class="input" />
+							</div>
+
+							<div>
+								<label class="label">Commissions ($)</label>
+								<input type="number" step="0.01" bind:value={formData.commissions} class="input" />
+							</div>
+
+							<div>
+								<label class="label">Slippage ($)</label>
+								<input type="number" step="0.01" bind:value={formData.slippage} class="input" />
+							</div>
+						</div>
+					</div>
+
+					<!-- Auto-Calculated Values Display -->
+					<div
+						class="rounded-lg border-2 border-green-200 bg-gradient-to-br from-green-50 to-emerald-50 p-4"
+					>
+						<h3 class="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+							<Calculator class="h-5 w-5 text-green-600" />
+							Auto-Calculated Values
+						</h3>
+						<div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+							<div class="rounded-lg bg-white p-3">
+								<div class="text-xs text-gray-600">Gross P&L</div>
+								<div
+									class="text-lg font-bold {autoCalculations.grossPnl >= 0
+										? 'text-profit'
+										: 'text-loss'}"
+								>
+									{formatCurrency(autoCalculations.grossPnl)}
+								</div>
+							</div>
+
+							<div class="rounded-lg bg-white p-3">
+								<div class="text-xs text-gray-600">Net P&L</div>
+								<div
+									class="text-lg font-bold {autoCalculations.netPnl >= 0
+										? 'text-profit'
+										: 'text-loss'}"
+								>
+									{formatCurrency(autoCalculations.netPnl)}
+								</div>
+							</div>
+
+							<div class="rounded-lg bg-white p-3">
+								<div class="text-xs text-gray-600">Expected R:R</div>
+								<div class="text-lg font-bold text-gray-900">
+									{autoCalculations.expectedRR.toFixed(2)}
+								</div>
+							</div>
+
+							<div class="rounded-lg bg-white p-3">
+								<div class="text-xs text-gray-600">Actual R:R</div>
+								<div class="text-lg font-bold text-gray-900">
+									{autoCalculations.actualRR > 0 ? autoCalculations.actualRR.toFixed(2) : '-'}
+								</div>
+							</div>
+						</div>
+
+						<div class="mt-3 flex items-center justify-between">
+							<div class="text-sm text-gray-700">
+								<span class="font-medium">Outcome:</span>
+								<span
+									class="ml-2 inline-flex items-center gap-1 font-bold {getOutcomeColor(
+										autoCalculations.outcome
+									)}"
+								>
+									<svelte:component
+										this={getOutcomeIcon(autoCalculations.outcome)}
+										class="h-4 w-4"
+									/>
+									{autoCalculations.outcome.toUpperCase()}
+								</span>
+							</div>
+							<p class="text-xs text-gray-600 italic">
+								All values calculated automatically based on instrument specs
+							</p>
+						</div>
+					</div>
+
+					<!-- Dates & Context -->
+					<div>
+						<h3 class="mb-4 text-lg font-semibold text-gray-900">Timing & Context</h3>
+						<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+							<div>
+								<label class="label">Entry Date/Time *</label>
+								<input
+									type="datetime-local"
+									bind:value={formData.entryDate}
+									required
+									class="input"
+								/>
+							</div>
+
+							<div>
+								<label class="label">Exit Date/Time</label>
+								<input type="datetime-local" bind:value={formData.exitDate} class="input" />
+							</div>
+
+							<div>
+								<label class="label">Time of Day</label>
+								<select bind:value={formData.timeOfDay} class="select">
+									<option value="">Not specified</option>
+									<option value="premarket">Pre-Market</option>
+									<option value="morning">Morning</option>
+									<option value="midday">Midday</option>
+									<option value="afternoon">Afternoon</option>
+									<option value="afterhours">After Hours</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="label">Market Condition</label>
+								<select bind:value={formData.marketCondition} class="select">
+									<option value="">Not specified</option>
+									<option value="trending">Trending</option>
+									<option value="ranging">Ranging</option>
+									<option value="volatile">Volatile</option>
+									<option value="quiet">Quiet</option>
+								</select>
+							</div>
+
+							<div>
+								<label class="label">Session Quality</label>
+								<div class="flex items-center gap-2">
+									{#each [1, 2, 3, 4, 5] as star}
+										<button
+											type="button"
+											onclick={() => (formData.sessionQuality = star)}
+											class="text-2xl {formData.sessionQuality >= star
+												? 'text-yellow-400'
+												: 'text-gray-300'}"
+										>
+											★
+										</button>
+									{/each}
+								</div>
+							</div>
+
+							<div>
+								<label class="mt-7 flex items-center gap-2">
+									<input
+										type="checkbox"
+										bind:checked={formData.followedPlan}
+										class="text-primary-600 focus:ring-primary-500 h-4 w-4 rounded border-gray-300"
+									/>
+									<span class="text-sm font-medium text-gray-700">Followed Plan</span>
+								</label>
+							</div>
+						</div>
+					</div>
+
+					<!-- Checklist -->
+					{#if checklists.length > 0 && checklists[0].items}
+						<div
+							class="rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4"
+						>
+							<h3 class="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+								<CheckCircle class="h-5 w-5 text-blue-600" />
+								Pre-Trade Checklist
+							</h3>
+							<p class="mb-4 text-sm text-gray-700">
+								Complete all items before entering the trade. Studies show this improves win rate by
+								15-20%!
+							</p>
+							<div class="space-y-2">
+								{#each checklists[0].items as item}
+									<label
+										class="flex cursor-pointer items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-sm"
 									>
-										{formatCurrency(calculatedPnL)}
+										<input
+											type="checkbox"
+											bind:checked={checklistItems[item.id]}
+											class="text-primary-600 focus:ring-primary-500 mt-0.5 h-5 w-5 rounded border-gray-300"
+										/>
+										<div class="flex-1">
+											<div class="flex flex-wrap items-center gap-2">
+												<span class="text-sm font-medium text-gray-900">{item.text}</span>
+												{#if item.required}
+													<span
+														class="rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700"
+													>
+														REQUIRED
+													</span>
+												{/if}
+												<span
+													class="rounded-full px-2 py-0.5 text-xs {item.category === 'pre-trade'
+														? 'bg-blue-100 text-blue-700'
+														: item.category === 'during-trade'
+															? 'bg-yellow-100 text-yellow-700'
+															: 'bg-green-100 text-green-700'}"
+												>
+													{item.category.replace('-', ' ')}
+												</span>
+											</div>
+										</div>
+									</label>
+								{/each}
+							</div>
+
+							<!-- Progress Bar -->
+							<div class="mt-4 rounded-lg border border-blue-200 bg-white p-3">
+								<div class="mb-2 flex items-center justify-between text-sm">
+									<span class="font-medium text-gray-700">Completion:</span>
+									<span class="text-primary-600 font-bold">
+										{Object.values(checklistItems).filter(Boolean).length} / {checklists[0].items
+											.length}
 									</span>
 								</div>
-								<div>
-									<span class="text-gray-600">Net P&L:</span>
-									<span
-										class="ml-2 font-semibold {calculatedNetPnL >= 0 ? 'text-profit' : 'text-loss'}"
-									>
-										{formatCurrency(calculatedNetPnL)}
-									</span>
-								</div>
-								<div>
-									<span class="text-gray-600">Expected R:R:</span>
-									<span class="ml-2 font-semibold text-gray-900">
-										{expectedRR.toFixed(2)}
-									</span>
-								</div>
-								<div>
-									<span class="text-gray-600">Actual R:R:</span>
-									<span class="ml-2 font-semibold text-gray-900">
-										{calculatedRR.toFixed(2)}
-									</span>
+								<div class="h-2 w-full rounded-full bg-gray-200">
+									<div
+										class="bg-primary-600 h-2 rounded-full transition-all duration-300"
+										style="width: {(Object.values(checklistItems).filter(Boolean).length /
+											checklists[0].items.length) *
+											100}%"
+									></div>
 								</div>
 							</div>
 						</div>
 					{/if}
-				</div>
 
-				<!-- Context -->
-				<div>
-					<h3 class="mb-4 text-lg font-semibold text-gray-900">Trade Context</h3>
-					<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
-						<div>
-							<label class="label">Time of Day</label>
-							<select bind:value={formData.timeOfDay} class="select">
-								<option value="premarket">Pre-market</option>
-								<option value="morning">Morning</option>
-								<option value="midday">Midday</option>
-								<option value="afternoon">Afternoon</option>
-								<option value="afterhours">After Hours</option>
-							</select>
-						</div>
-
-						<div>
-							<label class="label">Market Condition</label>
-							<select bind:value={formData.marketCondition} class="select">
-								<option value="trending">Trending</option>
-								<option value="ranging">Ranging</option>
-								<option value="volatile">Volatile</option>
-								<option value="quiet">Quiet</option>
-							</select>
-						</div>
-
-						<div>
-							<label class="label">Session Quality</label>
-							<select bind:value={formData.sessionQuality} class="select">
-								<option value={1}>⭐ Poor</option>
-								<option value={2}>⭐⭐ Below Average</option>
-								<option value={3}>⭐⭐⭐ Average</option>
-								<option value={4}>⭐⭐⭐⭐ Good</option>
-								<option value={5}>⭐⭐⭐⭐⭐ Excellent</option>
-							</select>
-						</div>
-
-						<div class="col-span-full">
-							<label class="flex items-center gap-2">
-								<input
-									type="checkbox"
-									bind:checked={formData.followedPlan}
-									class="text-primary-600 focus:ring-primary-500 h-4 w-4 rounded border-gray-300"
-								/>
-								<span class="text-sm font-medium text-gray-700">I followed my trading plan</span>
-							</label>
-						</div>
-					</div>
-				</div>
-
-				<!-- Chart Images -->
-				<div>
-					<h3 class="mb-4 text-lg font-semibold text-gray-900">Chart Images</h3>
-					<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-						<div>
-							<label class="label">Before Chart URL (TradingView)</label>
-							<div class="flex gap-2">
-								<input
-									type="url"
-									bind:value={formData.chartBeforeUrl}
-									onblur={() => handleChartUrlBlur('before')}
+					<!-- Notes Section -->
+					<div>
+						<h3 class="mb-4 text-lg font-semibold text-gray-900">Notes & Reflections</h3>
+						<div class="space-y-4">
+							<div>
+								<label class="label">Pre-Trade Notes</label>
+								<textarea
+									bind:value={formData.preTradeNotes}
+									rows="2"
 									class="input"
-									placeholder="https://www.tradingview.com/chart/..."
-								/>
-								{#if formData.chartBeforeUrl}
-									<ImageIcon class="text-primary-600 h-10 w-10" />
-								{/if}
+									placeholder="What was your thesis? Why did you enter?"
+								></textarea>
 							</div>
-						</div>
 
-						<div>
-							<label class="label">After Chart URL (TradingView)</label>
-							<div class="flex gap-2">
-								<input
-									type="url"
-									bind:value={formData.chartAfterUrl}
-									onblur={() => handleChartUrlBlur('after')}
+							<div>
+								<label class="label">Post-Trade Notes</label>
+								<textarea
+									bind:value={formData.postTradeNotes}
+									rows="2"
 									class="input"
-									placeholder="https://www.tradingview.com/chart/..."
+									placeholder="What happened? How did it play out?"
+								></textarea>
+							</div>
+
+							<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+								<div>
+									<label class="label">Mistakes Made</label>
+									<textarea
+										bind:value={formData.mistakes}
+										rows="2"
+										class="input"
+										placeholder="What went wrong?"
+									></textarea>
+								</div>
+
+								<div>
+									<label class="label">Lessons Learned</label>
+									<textarea
+										bind:value={formData.lessonsLearned}
+										rows="2"
+										class="input"
+										placeholder="What will you do differently?"
+									></textarea>
+								</div>
+							</div>
+
+							<div>
+								<label class="label">Tags (comma separated)</label>
+								<input
+									type="text"
+									bind:value={formData.tags}
+									class="input"
+									placeholder="breakout, earnings, news, etc."
 								/>
-								{#if formData.chartAfterUrl}
-									<ImageIcon class="text-primary-600 h-10 w-10" />
-								{/if}
 							</div>
 						</div>
 					</div>
-				</div>
 
-				<!-- Notes -->
-				<div>
-					<h3 class="mb-4 text-lg font-semibold text-gray-900">Notes & Reflections</h3>
-					<div class="space-y-4">
-						<div>
-							<label class="label">Pre-Trade Notes</label>
-							<textarea
-								bind:value={formData.preTradeNotes}
-								rows="2"
-								class="input"
-								placeholder="What was your analysis before entering?"
-							></textarea>
-						</div>
-
-						<div>
-							<label class="label">Post-Trade Notes</label>
-							<textarea
-								bind:value={formData.postTradeNotes}
-								rows="2"
-								class="input"
-								placeholder="What happened during the trade?"
-							></textarea>
-						</div>
-
-						<div>
-							<label class="label">General Notes</label>
-							<textarea
-								bind:value={formData.notes}
-								rows="2"
-								class="input"
-								placeholder="Any additional observations..."
-							></textarea>
-						</div>
-
-						<div>
-							<label class="label">Mistakes Made</label>
-							<textarea
-								bind:value={formData.mistakes}
-								rows="2"
-								class="input"
-								placeholder="What went wrong?"
-							></textarea>
-						</div>
-
-						<div>
-							<label class="label">Lessons Learned</label>
-							<textarea
-								bind:value={formData.lessonsLearned}
-								rows="2"
-								class="input"
-								placeholder="What will you do differently next time?"
-							></textarea>
-						</div>
-
-						<div>
-							<label class="label">Tags (comma separated)</label>
-							<input
-								type="text"
-								bind:value={formData.tags}
-								class="input"
-								placeholder="earnings, gap-up, momentum"
-							/>
-						</div>
+					<!-- Form Actions -->
+					<div class="flex gap-3 border-t border-gray-200 pt-4">
+						<button
+							type="submit"
+							class="btn btn-primary flex flex-1 items-center justify-center gap-2"
+						>
+							<Save class="h-5 w-5" />
+							{editingTrade ? 'Update Trade' : 'Save Trade'}
+						</button>
+						<button
+							type="button"
+							onclick={() => (showTradeModal = false)}
+							class="btn btn-secondary flex-1"
+						>
+							Cancel
+						</button>
 					</div>
-				</div>
-
-				<!-- Actions -->
-				<div class="sticky bottom-0 flex gap-3 border-t border-gray-200 bg-white pt-4">
-					<button type="submit" class="btn btn-primary flex-1">
-						{editingTrade ? 'Update Trade' : 'Add Trade'}
-					</button>
-					<button
-						type="button"
-						onclick={() => (showModal = false)}
-						class="btn btn-secondary flex-1"
-					>
-						Cancel
-					</button>
-				</div>
-			</form>
+				</form>
+			</div>
 		</div>
-	</div>
-{/if}
+	{/if}
+
+	<!-- AI Analysis Modal -->
+	{#if showAnalysisModal && analyzingTrade}
+		<div class="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+			<div class="my-8 w-full max-w-3xl rounded-lg bg-white">
+				<div class="border-b border-gray-200 p-6">
+					<div class="flex items-center justify-between">
+						<div class="flex items-center gap-2">
+							<Sparkles class="h-6 w-6 text-purple-600" />
+							<h2 class="text-xl font-bold text-gray-900">AI Trade Analysis</h2>
+						</div>
+						<button
+							onclick={() => (showAnalysisModal = false)}
+							class="text-gray-400 hover:text-gray-600"
+						>
+							<X class="h-6 w-6" />
+						</button>
+					</div>
+					<p class="mt-1 text-sm text-gray-600">
+						{analyzingTrade.symbol} - {new Date(analyzingTrade.entryDate).toLocaleDateString()}
+					</p>
+				</div>
+
+				<div class="max-h-[70vh] overflow-y-auto p-6">
+					{#if loadingAnalysis}
+						<div class="flex flex-col items-center justify-center py-12">
+							<Sparkles class="mb-3 h-12 w-12 animate-pulse text-purple-600" />
+							<p class="text-gray-600">Analyzing your trade...</p>
+							<p class="mt-1 text-sm text-gray-500">This may take a few seconds</p>
+						</div>
+					{:else if tradeAnalysis}
+						<!-- Trade Score -->
+						<div
+							class="mb-6 rounded-lg p-4 {tradeAnalysis.score >= 80
+								? 'border-2 border-green-500 bg-green-50'
+								: tradeAnalysis.score >= 60
+									? 'border-2 border-blue-500 bg-blue-50'
+									: tradeAnalysis.score >= 40
+										? 'border-2 border-yellow-500 bg-yellow-50'
+										: 'border-2 border-red-500 bg-red-50'}"
+						>
+							<div class="mb-2 flex items-center justify-between">
+								<span class="text-sm font-semibold text-gray-700">Trade Execution Score</span>
+								<span
+									class="text-4xl font-bold {tradeAnalysis.score >= 80
+										? 'text-green-600'
+										: tradeAnalysis.score >= 60
+											? 'text-blue-600'
+											: tradeAnalysis.score >= 40
+												? 'text-yellow-600'
+												: 'text-red-600'}">{tradeAnalysis.score}/100</span
+								>
+							</div>
+							<p class="text-sm text-gray-700">{tradeAnalysis.summary}</p>
+						</div>
+
+						<!-- Insights -->
+						<h3 class="mb-3 font-semibold text-gray-900">Detailed Analysis & Recommendations</h3>
+						<div class="space-y-3">
+							{#each tradeAnalysis.insights as insight}
+								<div
+									class="rounded-lg border-l-4 p-4 {insight.severity === 'danger'
+										? 'border-red-500 bg-red-50'
+										: insight.severity === 'warning'
+											? 'border-yellow-500 bg-yellow-50'
+											: 'border-green-500 bg-green-50'}"
+								>
+									<div class="mb-2 flex items-start justify-between">
+										<span class="text-sm font-semibold text-gray-900">{insight.category}</span>
+										<span
+											class="rounded-full px-2 py-1 text-xs {insight.severity === 'danger'
+												? 'bg-red-100 text-red-700'
+												: insight.severity === 'warning'
+													? 'bg-yellow-100 text-yellow-700'
+													: 'bg-green-100 text-green-700'}"
+										>
+											{insight.severity.toUpperCase()}
+										</span>
+									</div>
+									<p class="mb-2 text-sm text-gray-700">{insight.message}</p>
+									<div class="mt-2 rounded bg-white/70 p-2">
+										<p class="text-sm font-medium text-gray-900">
+											💡 Action: {insight.recommendation}
+										</p>
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				</div>
+
+				<div class="border-t border-gray-200 p-6">
+					<button onclick={() => (showAnalysisModal = false)} class="btn btn-secondary w-full">
+						Close Analysis
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+</div>
