@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "name": "ICI",
+    "description": "A mentfx smartmoney strategy that calls for trades on the second leg continuation after a correction",
+    "setup": "",
+    "entry": "",
+    "exit": "none",
+    "stopLoss": "trail stoploss to breakeven after price hits 1:1",
+    "targetRR": 2,
+    "timeframes": [],
+    "markets": [],
+    "notes": "",
+    "active": true,
+    "winRate": 0,
+    "totalTrades": 0,
+    "avgPnl": 0,
+    "id": "1771185064549"
+  }
+]

@@ -71,6 +71,12 @@ export interface Instrument {
   lotSize: number;
   currency: string;
   notes: string;
+  pipValue?: number;           // Value per pip (for forex)
+  contractSize?: number;       // Contract multiplier (100,000 for forex standard lot)
+  marginRequirement?: number;  // Margin % required to open position
+  tradingHours?: string;       // Trading hours (e.g., "9:30-16:00 EST")
+  pointValue?: number;         // Point value for futures
+  spread?: number;             // Typical spread in pips/points
 }
 
 export interface Strategy {

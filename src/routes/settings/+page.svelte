@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { accounts } from '$lib/stores';
-	import { Plus, Edit, Trash2, Save, DollarSign } from 'lucide-svelte';
+	import { accounts, theme as themeStore } from '$lib/stores';
+	import {
+		Plus,
+		Edit,
+		Trash2,
+		Save,
+		DollarSign,
+		Info,
+		Calculator,
+		TrendingUp
+	} from 'lucide-svelte';
 	import type {
 		Account,
 		Settings,
@@ -44,10 +53,25 @@
 		name: '',
 		type: 'stock' as 'stock' | 'forex' | 'crypto' | 'futures' | 'options' | 'index',
 		exchange: '',
-		tickSize: '',
-		lotSize: '',
+		tickSize: '0.01',
+		lotSize: '1',
 		currency: 'USD',
-		notes: ''
+		notes: '',
+		pipValue: '',
+		contractSize: '',
+		marginRequirement: '',
+		tradingHours: '',
+		pointValue: '',
+		spread: ''
+	});
+
+	// Profit calculator states
+	let calcPositionSize = $state(1);
+	let calcPipMove = $state(10);
+
+	const calcProfit = $derived(() => {
+		if (!instrumentForm.pipValue) return 0;
+		return calcPositionSize * calcPipMove * parseFloat(instrumentForm.pipValue || '0');
 	});
 
 	let strategyForm = $state({
@@ -57,7 +81,7 @@
 		entry: '',
 		exit: '',
 		stopLoss: '',
-		targetRR: '',
+		targetRR: '2',
 		timeframes: '',
 		markets: '',
 		notes: '',
@@ -92,6 +116,12 @@
 			loadChecklists(),
 			loadSettings()
 		]);
+
+		themeStore.subscribe((value) => {
+			if (settings && (value === 'light' || value === 'dark')) {
+				settings.theme = value;
+			}
+		});
 	});
 
 	async function loadAccounts() {
@@ -227,8 +257,16 @@
 			tickSize: '0.01',
 			lotSize: '1',
 			currency: 'USD',
-			notes: ''
+			notes: '',
+			pipValue: '',
+			contractSize: '',
+			marginRequirement: '',
+			tradingHours: '',
+			pointValue: '',
+			spread: ''
 		};
+		calcPositionSize = 1;
+		calcPipMove = 10;
 		showInstrumentModal = true;
 	}
 
@@ -242,7 +280,13 @@
 			tickSize: instrument.tickSize.toString(),
 			lotSize: instrument.lotSize.toString(),
 			currency: instrument.currency,
-			notes: instrument.notes
+			notes: instrument.notes,
+			pipValue: instrument.pipValue?.toString() || '',
+			contractSize: instrument.contractSize?.toString() || '',
+			marginRequirement: instrument.marginRequirement?.toString() || '',
+			tradingHours: instrument.tradingHours || '',
+			pointValue: instrument.pointValue?.toString() || '',
+			spread: instrument.spread?.toString() || ''
 		};
 		showInstrumentModal = true;
 	}
@@ -256,7 +300,17 @@
 			tickSize: parseFloat(instrumentForm.tickSize),
 			lotSize: parseFloat(instrumentForm.lotSize),
 			currency: instrumentForm.currency,
-			notes: instrumentForm.notes
+			notes: instrumentForm.notes,
+			pipValue: instrumentForm.pipValue ? parseFloat(instrumentForm.pipValue) : undefined,
+			contractSize: instrumentForm.contractSize
+				? parseFloat(instrumentForm.contractSize)
+				: undefined,
+			marginRequirement: instrumentForm.marginRequirement
+				? parseFloat(instrumentForm.marginRequirement)
+				: undefined,
+			tradingHours: instrumentForm.tradingHours || undefined,
+			pointValue: instrumentForm.pointValue ? parseFloat(instrumentForm.pointValue) : undefined,
+			spread: instrumentForm.spread ? parseFloat(instrumentForm.spread) : undefined
 		};
 
 		try {
@@ -485,10 +539,18 @@
 				body: JSON.stringify(settings)
 			});
 
+			if (settings.theme === 'light' || settings.theme === 'dark') {
+				themeStore.set(settings.theme);
+			}
+
 			alert('Settings saved successfully!');
 		} catch (error) {
 			console.error('Error saving settings:', error);
 		}
+	}
+
+	function formatCurrency(value: number) {
+		return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
 	}
 </script>
 
@@ -594,13 +656,13 @@
 										<div>
 											<span class="text-gray-600">Balance:</span>
 											<span class="ml-1 font-medium text-gray-900">
-												${account.balance.toLocaleString()}
+												{formatCurrency(account.balance)}
 											</span>
 										</div>
 										<div>
 											<span class="text-gray-600">Invested:</span>
 											<span class="ml-1 font-medium text-gray-900">
-												${account.investedAmount.toLocaleString()}
+												{formatCurrency(account.investedAmount)}
 											</span>
 										</div>
 										<div>
@@ -610,7 +672,7 @@
 													? 'text-profit'
 													: 'text-loss'} ml-1"
 											>
-												${account.totalPnl.toLocaleString()}
+												{formatCurrency(account.totalPnl)}
 											</span>
 										</div>
 									</div>
@@ -637,11 +699,16 @@
 		</div>
 	{/if}
 
-	<!-- Instruments Tab -->
+	<!-- Enhanced Instruments Tab -->
 	{#if currentTab === 'instruments'}
 		<div class="card">
 			<div class="mb-6 flex items-center justify-between">
-				<h2 class="text-xl font-semibold text-gray-900">Instruments</h2>
+				<div>
+					<h2 class="text-xl font-semibold text-gray-900">Instruments</h2>
+					<p class="mt-1 text-sm text-gray-500">
+						Manage trading instruments with detailed specifications
+					</p>
+				</div>
 				<button onclick={openAddInstrumentModal} class="btn btn-primary flex items-center gap-2">
 					<Plus class="h-5 w-5" />
 					Add Instrument
@@ -649,8 +716,13 @@
 			</div>
 
 			{#if instruments.length === 0}
-				<div class="py-12 text-center text-gray-500">
-					No instruments yet. Add instruments to track what you're trading.
+				<div class="py-12 text-center">
+					<p class="mb-4 text-gray-500">
+						No instruments yet. Add instruments to track what you're trading.
+					</p>
+					<p class="text-sm text-gray-400">
+						Instruments include stocks, forex pairs, cryptocurrencies, futures, and more.
+					</p>
 				</div>
 			{:else}
 				<div class="overflow-x-auto">
@@ -661,8 +733,12 @@
 								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Name</th>
 								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Type</th>
 								<th class="px-4 py-3 text-left text-sm font-medium text-gray-600">Exchange</th>
-								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Tick Size</th>
-								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Lot Size</th>
+								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">
+									<span class="flex items-center justify-end gap-1">
+										Pip Value
+										<Info class="h-3 w-3 text-gray-400" />
+									</span>
+								</th>
 								<th class="px-4 py-3 text-right text-sm font-medium text-gray-600">Actions</th>
 							</tr>
 						</thead>
@@ -679,8 +755,9 @@
 										</span>
 									</td>
 									<td class="px-4 py-3 text-sm text-gray-900">{instrument.exchange}</td>
-									<td class="px-4 py-3 text-right text-sm text-gray-900">{instrument.tickSize}</td>
-									<td class="px-4 py-3 text-right text-sm text-gray-900">{instrument.lotSize}</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900">
+										{instrument.pipValue ? `$${instrument.pipValue}` : '-'}
+									</td>
 									<td class="px-4 py-3 text-right">
 										<div class="flex items-center justify-end gap-2">
 											<button
@@ -870,6 +947,26 @@
 							<option value="Asia/Kolkata">India</option>
 						</select>
 					</div>
+
+					<div>
+						<label class="label">Theme</label>
+						<select
+							bind:value={settings.theme}
+							onchange={() => {
+								if (settings.theme === 'light' || settings.theme === 'dark') {
+									themeStore.set(settings.theme);
+								}
+							}}
+							class="select"
+						>
+							<option value="light">Light</option>
+							<option value="dark">Dark</option>
+							<option value="auto">Auto (System)</option>
+						</select>
+						<p class="mt-1 text-xs text-gray-500">
+							You can also use the theme toggle in the sidebar
+						</p>
+					</div>
 				</div>
 
 				<div>
@@ -1020,14 +1117,34 @@
 	</div>
 {/if}
 
-<!-- Instrument Modal -->
+<!-- Enhanced Instrument Modal -->
 {#if showInstrumentModal}
-	<div class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center bg-black p-4">
-		<div class="w-full max-w-md rounded-lg bg-white">
-			<div class="border-b border-gray-200 p-6">
-				<h2 class="text-xl font-bold text-gray-900">
-					{editingInstrument ? 'Edit Instrument' : 'Add New Instrument'}
-				</h2>
+	<div
+		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"
+	>
+		<div class="my-8 w-full max-w-4xl rounded-lg bg-white">
+			<div class="sticky top-0 z-10 rounded-t-lg border-b border-gray-200 bg-white p-6">
+				<div class="flex items-center justify-between">
+					<div>
+						<h2 class="text-xl font-bold text-gray-900">
+							{editingInstrument ? 'Edit Instrument' : 'Add New Instrument'}
+						</h2>
+						<p class="mt-1 text-sm text-gray-500">Configure detailed instrument specifications</p>
+					</div>
+					<button
+						onclick={() => (showInstrumentModal = false)}
+						class="text-gray-400 hover:text-gray-600"
+					>
+						<svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M6 18L18 6M6 6l12 12"
+							/>
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			<form
@@ -1035,97 +1152,275 @@
 					e.preventDefault();
 					handleInstrumentSubmit();
 				}}
-				class="space-y-4 p-6"
+				class="space-y-6 p-6"
 			>
-				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="label">Symbol</label>
-						<input
-							type="text"
-							bind:value={instrumentForm.symbol}
-							required
-							class="input"
-							placeholder="AAPL"
-						/>
-					</div>
-
-					<div>
-						<label class="label">Type</label>
-						<select bind:value={instrumentForm.type} required class="select">
-							<option value="stock">Stock</option>
-							<option value="forex">Forex</option>
-							<option value="crypto">Crypto</option>
-							<option value="futures">Futures</option>
-							<option value="options">Options</option>
-							<option value="index">Index</option>
-						</select>
-					</div>
-				</div>
-
+				<!-- Basic Information -->
 				<div>
-					<label class="label">Name</label>
-					<input
-						type="text"
-						bind:value={instrumentForm.name}
-						required
-						class="input"
-						placeholder="Apple Inc."
-					/>
+					<h3 class="mb-4 text-lg font-semibold text-gray-900">Basic Information</h3>
+					<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+						<div>
+							<label class="label">
+								Symbol
+								<span class="text-red-600">*</span>
+							</label>
+							<input
+								type="text"
+								bind:value={instrumentForm.symbol}
+								required
+								class="input"
+								placeholder="AAPL, EURUSD, BTC"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Ticker or pair symbol</p>
+						</div>
+
+						<div>
+							<label class="label">Type <span class="text-red-600">*</span></label>
+							<select bind:value={instrumentForm.type} required class="select">
+								<option value="stock">Stock</option>
+								<option value="forex">Forex</option>
+								<option value="crypto">Crypto</option>
+								<option value="futures">Futures</option>
+								<option value="options">Options</option>
+								<option value="index">Index</option>
+							</select>
+						</div>
+
+						<div>
+							<label class="label">Currency <span class="text-red-600">*</span></label>
+							<input
+								type="text"
+								bind:value={instrumentForm.currency}
+								required
+								class="input"
+								placeholder="USD, EUR, GBP"
+							/>
+						</div>
+
+						<div class="col-span-2">
+							<label class="label">Name <span class="text-red-600">*</span></label>
+							<input
+								type="text"
+								bind:value={instrumentForm.name}
+								required
+								class="input"
+								placeholder="Apple Inc., Euro / US Dollar"
+							/>
+						</div>
+
+						<div>
+							<label class="label">Exchange</label>
+							<input
+								type="text"
+								bind:value={instrumentForm.exchange}
+								class="input"
+								placeholder="NASDAQ, NYSE, Binance"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Where it's traded</p>
+						</div>
+					</div>
 				</div>
 
-				<div class="grid grid-cols-2 gap-4">
-					<div>
-						<label class="label">Exchange</label>
-						<input
-							type="text"
-							bind:value={instrumentForm.exchange}
-							class="input"
-							placeholder="NASDAQ"
-						/>
-					</div>
+				<!-- Trading Specifications -->
+				<div>
+					<h3 class="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+						Trading Specifications
+						<span class="text-sm font-normal text-gray-500">(Important for calculations)</span>
+					</h3>
+					<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
+						<div>
+							<label class="label flex items-center gap-1">
+								Tick Size
+								<span class="cursor-help text-gray-400" title="Minimum price movement">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.0001"
+								bind:value={instrumentForm.tickSize}
+								required
+								class="input"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Min price increment (e.g., 0.01)</p>
+						</div>
 
-					<div>
-						<label class="label">Currency</label>
-						<input
-							type="text"
-							bind:value={instrumentForm.currency}
-							required
-							class="input"
-							placeholder="USD"
-						/>
-					</div>
+						<div>
+							<label class="label flex items-center gap-1">
+								Lot Size
+								<span class="cursor-help text-gray-400" title="Standard position size">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.01"
+								bind:value={instrumentForm.lotSize}
+								required
+								class="input"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Standard lot (1 for stocks)</p>
+						</div>
 
-					<div>
-						<label class="label">Tick Size</label>
-						<input
-							type="number"
-							step="0.0001"
-							bind:value={instrumentForm.tickSize}
-							required
-							class="input"
-						/>
-					</div>
+						<div>
+							<label class="label flex items-center gap-1">
+								Pip Value ($)
+								<span class="cursor-help text-gray-400" title="Profit per pip movement">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.01"
+								bind:value={instrumentForm.pipValue}
+								class="input"
+								placeholder="10.00"
+							/>
+							<p class="mt-1 text-xs text-gray-500">For forex: $10/pip standard lot</p>
+						</div>
 
-					<div>
-						<label class="label">Lot Size</label>
-						<input
-							type="number"
-							step="0.01"
-							bind:value={instrumentForm.lotSize}
-							required
-							class="input"
-						/>
+						<div>
+							<label class="label flex items-center gap-1">
+								Contract Size
+								<span class="cursor-help text-gray-400" title="Contract multiplier">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								bind:value={instrumentForm.contractSize}
+								class="input"
+								placeholder="100000"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Forex: 100,000 (standard lot)</p>
+						</div>
+
+						<div>
+							<label class="label flex items-center gap-1">
+								Margin Required (%)
+								<span class="cursor-help text-gray-400" title="Required margin percentage">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.1"
+								bind:value={instrumentForm.marginRequirement}
+								class="input"
+								placeholder="1.0"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Typical: 1-5% for forex</p>
+						</div>
+
+						<div>
+							<label class="label flex items-center gap-1">
+								Typical Spread
+								<span class="cursor-help text-gray-400" title="Average bid-ask spread">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.1"
+								bind:value={instrumentForm.spread}
+								class="input"
+								placeholder="1.5"
+							/>
+							<p class="mt-1 text-xs text-gray-500">In pips/points</p>
+						</div>
+
+						<div class="col-span-2">
+							<label class="label flex items-center gap-1">
+								Trading Hours
+								<span class="cursor-help text-gray-400" title="When market is open">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="text"
+								bind:value={instrumentForm.tradingHours}
+								class="input"
+								placeholder="9:30-16:00 EST, 24/7, etc."
+							/>
+							<p class="mt-1 text-xs text-gray-500">When you can trade this</p>
+						</div>
+
+						<div>
+							<label class="label flex items-center gap-1">
+								Point Value ($)
+								<span class="cursor-help text-gray-400" title="For futures contracts">
+									<Info class="h-3 w-3" />
+								</span>
+							</label>
+							<input
+								type="number"
+								step="0.01"
+								bind:value={instrumentForm.pointValue}
+								class="input"
+								placeholder="50.00"
+							/>
+							<p class="mt-1 text-xs text-gray-500">Futures only</p>
+						</div>
 					</div>
 				</div>
 
+				<!-- Live Profit Calculator -->
+				{#if instrumentForm.pipValue}
+					<div
+						class="rounded-lg border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-6"
+					>
+						<div class="mb-4 flex items-center gap-2">
+							<Calculator class="h-5 w-5 text-blue-600" />
+							<h4 class="font-semibold text-gray-900">Live Profit Calculator</h4>
+						</div>
+						<div class="mb-4 grid grid-cols-2 gap-4">
+							<div>
+								<label class="text-sm font-medium text-gray-700">Position Size (lots)</label>
+								<input type="number" step="0.01" bind:value={calcPositionSize} class="input mt-1" />
+							</div>
+							<div>
+								<label class="text-sm font-medium text-gray-700">Pip Movement</label>
+								<input type="number" step="1" bind:value={calcPipMove} class="input mt-1" />
+							</div>
+						</div>
+						<div class="rounded-lg border border-blue-300 bg-white p-4">
+							<div class="flex items-center justify-between">
+								<span class="text-sm text-gray-600">Profit/Loss:</span>
+								<div class="flex items-center gap-2">
+									<span
+										class="text-2xl font-bold {calcProfit() >= 0 ? 'text-profit' : 'text-loss'}"
+									>
+										{formatCurrency(calcProfit())}
+									</span>
+									{#if calcProfit() >= 0}
+										<TrendingUp class="text-profit h-5 w-5" />
+									{:else}
+										<TrendingDown class="text-loss h-5 w-5" />
+									{/if}
+								</div>
+							</div>
+							<p class="mt-2 text-xs text-gray-500">
+								{calcPositionSize} lot × {calcPipMove} pips × ${instrumentForm.pipValue}/pip = {formatCurrency(
+									calcProfit()
+								)}
+							</p>
+						</div>
+					</div>
+				{/if}
+
+				<!-- Notes -->
 				<div>
 					<label class="label">Notes</label>
-					<textarea bind:value={instrumentForm.notes} rows="2" class="input"></textarea>
+					<textarea
+						bind:value={instrumentForm.notes}
+						rows="3"
+						class="input"
+						placeholder="Any additional notes about this instrument..."
+					></textarea>
 				</div>
 
-				<div class="flex gap-3 pt-4">
+				<div class="flex gap-3 border-t border-gray-200 pt-4">
 					<button type="submit" class="btn btn-primary flex-1">
-						{editingInstrument ? 'Update' : 'Create'}
+						{editingInstrument ? 'Update Instrument' : 'Create Instrument'}
 					</button>
 					<button
 						type="button"
@@ -1140,7 +1435,7 @@
 	</div>
 {/if}
 
-<!-- Strategy Modal -->
+<!-- Strategy Modal (same as before) -->
 {#if showStrategyModal}
 	<div
 		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"
@@ -1286,7 +1581,7 @@
 	</div>
 {/if}
 
-<!-- Checklist Modal -->
+<!-- Checklist Modal (same as before) -->
 {#if showChecklistModal}
 	<div
 		class="bg-opacity-50 fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black p-4"

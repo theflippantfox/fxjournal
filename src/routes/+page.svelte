@@ -7,6 +7,7 @@
 		calculateAnalytics,
 		formatTime
 	} from '$lib/utils/analytics';
+	import type { AIInsight } from '$lib/utils/aiAnalyzer';
 	import {
 		TrendingUp,
 		TrendingDown,
@@ -18,7 +19,14 @@
 		BarChart3,
 		PieChart,
 		Calendar,
-		Clock
+		Clock,
+		Sparkles,
+		TrendingDown as TrendingDownIcon,
+		TrendingUp as TrendingUpIcon,
+		CheckCircle,
+		XCircle,
+		Info,
+		AlertTriangle
 	} from 'lucide-svelte';
 	import type { Account, Trade } from '$lib/types';
 
@@ -26,10 +34,21 @@
 	let trades = $state<Trade[]>([]);
 	let analytics = $state<any>(null);
 	let loading = $state(true);
+	let aiInsights = $state<AIInsight[]>([]);
+	let loadingAI = $state(false);
+
+	// Chart interaction states
+	let hoveredEquityPoint = $state<{ date: string; equity: number; x: number; y: number } | null>(
+		null
+	);
+	let hoveredPieSegment = $state<string | null>(null);
+	let hoveredBar = $state<{ week: string; pnl: number } | null>(null);
+	let selectedChartPeriod = $state<'week' | 'month'>('week');
 
 	// Chart data
 	let equityCurveData = $state<{ date: string; equity: number }[]>([]);
 	let weeklyPnlData = $state<{ week: string; pnl: number }[]>([]);
+	let monthlyPnlData = $state<{ month: string; pnl: number }[]>([]);
 
 	$effect(() => {
 		loadData($selectedAccountId);
@@ -50,15 +69,30 @@
 			trades = await tradesRes.json();
 			analytics = calculateAnalytics(trades);
 
-			// Calculate equity curve
 			calculateEquityCurve();
+			weeklyPnlData = analytics.pnlByWeek.slice(-8);
+			monthlyPnlData = analytics.pnlByMonth.slice(-6);
 
-			// Get weekly P&L
-			weeklyPnlData = analytics.pnlByWeek.slice(-8); // Last 8 weeks
+			// Load AI analysis
+			loadAIAnalysis(accountId);
 		} catch (error) {
 			console.error('Error loading data:', error);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadAIAnalysis(accountId: string) {
+		loadingAI = true;
+		try {
+			const res = await fetch(`/api/ai-analysis?accountId=${accountId}`);
+			const data = await res.json();
+			aiInsights = data.insights || [];
+		} catch (error) {
+			console.error('AI analysis failed:', error);
+			aiInsights = [];
+		} finally {
+			loadingAI = false;
 		}
 	}
 
@@ -99,8 +133,7 @@
 			.slice(0, 5)
 	);
 
-	// Win/Loss distribution for pie chart
-	const winLossData = $derived(() => {
+	const outcomeData = $derived(() => {
 		if (!analytics) return { wins: 0, losses: 0, breakeven: 0 };
 		const closedTrades = trades.filter((t) => t.status === 'closed');
 		return {
@@ -110,21 +143,15 @@
 		};
 	});
 
-	// Calculate pie chart segments
 	function getPieSegments() {
-		const data = winLossData();
+		const data = outcomeData();
 		const total = data.wins + data.losses + data.breakeven;
 		if (total === 0) return [];
 
 		const segments = [];
 		let currentAngle = 0;
 
-		const colors = {
-			wins: '#10b981',
-			losses: '#ef4444',
-			breakeven: '#6b7280'
-		};
-
+		const colors = { wins: '#10b981', losses: '#ef4444', breakeven: '#6b7280' };
 		const values = [
 			{ label: 'Wins', count: data.wins, color: colors.wins },
 			{ label: 'Losses', count: data.losses, color: colors.losses },
@@ -135,7 +162,6 @@
 			if (item.count > 0) {
 				const percentage = item.count / total;
 				const angle = percentage * 360;
-
 				segments.push({
 					label: item.label,
 					count: item.count,
@@ -144,7 +170,6 @@
 					startAngle: currentAngle,
 					endAngle: currentAngle + angle
 				});
-
 				currentAngle += angle;
 			}
 		});
@@ -188,38 +213,36 @@
 		].join(' ');
 	}
 
-	// Calculate bar chart dimensions
 	function getBarChartData() {
-		if (weeklyPnlData.length === 0) return [];
+		const data = selectedChartPeriod === 'week' ? weeklyPnlData : monthlyPnlData;
+		if (data.length === 0) return [];
 
-		const maxPnl = Math.max(...weeklyPnlData.map((d) => Math.abs(d.pnl)));
+		const maxPnl = Math.max(...data.map((d) => Math.abs(d.pnl)));
 		const chartHeight = 200;
-		const barWidth = 40;
+		const barWidth = selectedChartPeriod === 'week' ? 40 : 60;
 		const gap = 10;
 
-		return weeklyPnlData.map((d, i) => {
+		return data.map((d, i) => {
 			const height = (Math.abs(d.pnl) / maxPnl) * (chartHeight - 40);
 			const y = d.pnl >= 0 ? chartHeight / 2 - height : chartHeight / 2;
-
 			return {
 				x: i * (barWidth + gap),
 				y,
 				width: barWidth,
 				height,
 				pnl: d.pnl,
-				week: d.week,
+				period: selectedChartPeriod === 'week' ? d.week : d.month,
 				color: d.pnl >= 0 ? '#10b981' : '#ef4444'
 			};
 		});
 	}
 
-	// Calculate equity curve path
 	function getEquityCurvePath() {
 		if (equityCurveData.length === 0) return '';
 
 		const width = 600;
 		const height = 200;
-		const padding = 40;
+		const padding = 60;
 
 		const xScale = (width - padding * 2) / (equityCurveData.length - 1);
 		const minEquity = Math.min(...equityCurveData.map((d) => d.equity));
@@ -231,12 +254,7 @@
 		equityCurveData.forEach((point, i) => {
 			const x = padding + i * xScale;
 			const y = height - padding - (point.equity - minEquity) * yScale;
-
-			if (i === 0) {
-				path += `M ${x} ${y}`;
-			} else {
-				path += ` L ${x} ${y}`;
-			}
+			path += i === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
 		});
 
 		return path;
@@ -247,7 +265,7 @@
 
 		const width = 600;
 		const height = 200;
-		const padding = 40;
+		const padding = 60;
 
 		const xScale = (width - padding * 2) / (equityCurveData.length - 1);
 		const minEquity = Math.min(...equityCurveData.map((d) => d.equity));
@@ -261,6 +279,66 @@
 			equity: point.equity,
 			date: point.date
 		}));
+	}
+
+	function getYAxisLabels() {
+		if (equityCurveData.length === 0) return [];
+
+		const minEquity = Math.min(...equityCurveData.map((d) => d.equity));
+		const maxEquity = Math.max(...equityCurveData.map((d) => d.equity));
+		const range = maxEquity - minEquity;
+		const step = range / 4;
+
+		return [maxEquity, maxEquity - step, maxEquity - step * 2, maxEquity - step * 3, minEquity];
+	}
+
+	function getXAxisLabels() {
+		if (equityCurveData.length === 0) return [];
+
+		const points = 5;
+		const step = Math.floor(equityCurveData.length / (points - 1));
+		const labels = [];
+
+		for (let i = 0; i < points; i++) {
+			const index = Math.min(i * step, equityCurveData.length - 1);
+			const date = new Date(equityCurveData[index].date);
+			labels.push({
+				text: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+				x: 60 + index * ((600 - 120) / (equityCurveData.length - 1))
+			});
+		}
+
+		return labels;
+	}
+
+	function getInsightIcon(type: string) {
+		switch (type) {
+			case 'success':
+				return CheckCircle;
+			case 'warning':
+				return AlertTriangle;
+			case 'danger':
+				return XCircle;
+			case 'info':
+				return Info;
+			default:
+				return Sparkles;
+		}
+	}
+
+	function getInsightColor(type: string) {
+		switch (type) {
+			case 'success':
+				return 'border-l-4 border-green-500 bg-green-50';
+			case 'warning':
+				return 'border-l-4 border-yellow-500 bg-yellow-50';
+			case 'danger':
+				return 'border-l-4 border-red-500 bg-red-50';
+			case 'info':
+				return 'border-l-4 border-blue-500 bg-blue-50';
+			default:
+				return 'border-l-4 border-purple-500 bg-purple-50';
+		}
 	}
 </script>
 
@@ -287,10 +365,82 @@
 			<p class="text-gray-600">Overview of {account.name}</p>
 		</div>
 
+		<!-- AI Insights Panel -->
+		{#if loadingAI}
+			<div class="card from-primary-50 border-primary-200 mb-8 bg-gradient-to-r to-blue-50">
+				<div class="flex items-center gap-3">
+					<Sparkles class="text-primary-600 h-6 w-6 animate-pulse" />
+					<div class="flex-1">
+						<h3 class="text-lg font-semibold text-gray-900">Analyzing your trades...</h3>
+						<p class="mt-1 text-sm text-gray-600">
+							AI is processing your data to generate personalized insights
+						</p>
+					</div>
+				</div>
+			</div>
+		{:else if aiInsights.length > 0}
+			<div class="mb-8">
+				<div class="mb-4 flex items-center gap-2">
+					<Sparkles class="text-primary-600 h-6 w-6" />
+					<h3 class="text-xl font-semibold text-gray-900">AI-Powered Insights</h3>
+					<span class="text-sm text-gray-500">({aiInsights.length} insights found)</span>
+				</div>
+				<div class="space-y-3">
+					{#each aiInsights.slice(0, 5) as insight}
+						<div class="card {getInsightColor(insight.type)} transition-shadow hover:shadow-md">
+							<div class="flex items-start gap-3">
+								<svelte:component
+									this={getInsightIcon(insight.type)}
+									class="mt-0.5 h-5 w-5 flex-shrink-0 {insight.type === 'success'
+										? 'text-green-600'
+										: insight.type === 'warning'
+											? 'text-yellow-600'
+											: insight.type === 'danger'
+												? 'text-red-600'
+												: insight.type === 'info'
+													? 'text-blue-600'
+													: 'text-purple-600'}"
+								/>
+								<div class="min-w-0 flex-1">
+									<div class="flex items-start justify-between gap-2">
+										<h4 class="text-sm font-semibold text-gray-900">{insight.title}</h4>
+										<span
+											class="flex-shrink-0 rounded-full px-2 py-0.5 text-xs {insight.severity ===
+											'high'
+												? 'bg-red-100 text-red-700'
+												: insight.severity === 'medium'
+													? 'bg-yellow-100 text-yellow-700'
+													: 'bg-blue-100 text-blue-700'}"
+										>
+											{insight.severity.toUpperCase()}
+										</span>
+									</div>
+									<p class="mt-1 text-sm text-gray-700">{insight.message}</p>
+									<div class="mt-2 rounded bg-white/50 p-2">
+										<p class="text-sm font-medium text-gray-900">💡 Action: {insight.actionable}</p>
+									</div>
+									{#if insight.metrics}
+										<div class="mt-2 text-xs text-gray-500">
+											<span class="font-medium">Data:</span>
+											{JSON.stringify(insight.metrics)}
+										</div>
+									{/if}
+								</div>
+							</div>
+						</div>
+					{/each}
+					{#if aiInsights.length > 5}
+						<button class="text-primary-600 hover:text-primary-700 w-full py-2 text-center text-sm">
+							View {aiInsights.length - 5} more insights →
+						</button>
+					{/if}
+				</div>
+			</div>
+		{/if}
+
 		<!-- Stats Grid -->
 		<div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
-			<!-- Account Balance -->
-			<div class="card">
+			<div class="card transition-shadow hover:shadow-md">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm text-gray-600">Balance</span>
 					<DollarSign class="h-5 w-5 text-gray-400" />
@@ -303,8 +453,7 @@
 				</div>
 			</div>
 
-			<!-- Total P&L -->
-			<div class="card">
+			<div class="card transition-shadow hover:shadow-md">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm text-gray-600">Total P&L</span>
 					{#if account.totalPnl >= 0}
@@ -321,8 +470,7 @@
 				</div>
 			</div>
 
-			<!-- Win Rate -->
-			<div class="card">
+			<div class="card transition-shadow hover:shadow-md">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm text-gray-600">Win Rate</span>
 					<Target class="h-5 w-5 text-gray-400" />
@@ -335,8 +483,7 @@
 				</div>
 			</div>
 
-			<!-- Profit Factor -->
-			<div class="card">
+			<div class="card transition-shadow hover:shadow-md">
 				<div class="mb-2 flex items-center justify-between">
 					<span class="text-sm text-gray-600">Profit Factor</span>
 					<Activity class="h-5 w-5 text-gray-400" />
@@ -350,10 +497,10 @@
 			</div>
 		</div>
 
-		<!-- Charts Row 1: Equity Curve & Win/Loss Distribution -->
+		<!-- Charts Row: Equity Curve & Outcome Distribution -->
 		<div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-			<!-- Equity Curve Chart -->
-			<div class="card lg:col-span-2">
+			<!-- Enhanced Equity Curve -->
+			<div class="card transition-shadow hover:shadow-md lg:col-span-2">
 				<div class="mb-6 flex items-center justify-between">
 					<div>
 						<h3 class="text-lg font-semibold text-gray-900">Equity Curve</h3>
@@ -368,41 +515,109 @@
 					</div>
 				{:else}
 					<div class="overflow-x-auto">
-						<svg width="100%" height="240" viewBox="0 0 600 240" class="min-w-[600px]">
-							<!-- Grid lines -->
-							<line x1="40" y1="40" x2="40" y2="200" stroke="#e5e7eb" stroke-width="1" />
-							<line x1="40" y1="200" x2="560" y2="200" stroke="#e5e7eb" stroke-width="1" />
+						<svg width="100%" height="280" viewBox="0 0 600 280" class="min-w-[600px]">
+							<!-- Y-axis labels -->
+							{#each getYAxisLabels() as label, i}
+								<text x="10" y={40 + i * 40} font-size="10" fill="#6b7280" text-anchor="start">
+									{formatCurrency(label).replace('.00', '')}
+								</text>
+								<line
+									x1="50"
+									y1={40 + i * 40}
+									x2="560"
+									y2={40 + i * 40}
+									stroke="#e5e7eb"
+									stroke-dasharray="4"
+									stroke-width="1"
+								/>
+							{/each}
 
-							<!-- Equity curve line -->
-							<path d={getEquityCurvePath()} fill="none" stroke="#0284c7" stroke-width="2" />
+							<!-- Axes -->
+							<line x1="50" y1="40" x2="50" y2="200" stroke="#9ca3af" stroke-width="2" />
+							<line x1="50" y1="200" x2="560" y2="200" stroke="#9ca3af" stroke-width="2" />
 
-							<!-- Data points -->
+							<!-- X-axis labels -->
+							{#each getXAxisLabels() as label}
+								<text x={label.x} y="220" font-size="10" fill="#6b7280" text-anchor="middle">
+									{label.text}
+								</text>
+							{/each}
+
+							<!-- Gradient fill -->
+							<defs>
+								<linearGradient id="equityGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+									<stop offset="0%" style="stop-color:#0284c7;stop-opacity:0.3" />
+									<stop offset="100%" style="stop-color:#0284c7;stop-opacity:0.05" />
+								</linearGradient>
+							</defs>
+							<path
+								d={getEquityCurvePath() + ' L 560 200 L 50 200 Z'}
+								fill="url(#equityGradient)"
+							/>
+
+							<!-- Equity line -->
+							<path d={getEquityCurvePath()} fill="none" stroke="#0284c7" stroke-width="3" />
+
+							<!-- Points -->
 							{#each getEquityCurvePoints() as point}
 								<circle
 									cx={point.x}
 									cy={point.y}
-									r="4"
+									r={hoveredEquityPoint?.date === point.date ? 6 : 4}
 									fill="#0284c7"
-									class="hover:r-6 cursor-pointer transition-all"
-								>
-									<title>{point.date}: {formatCurrency(point.equity)}</title>
-								</circle>
+									stroke="white"
+									stroke-width="2"
+									class="cursor-pointer transition-all"
+									onmouseenter={() => (hoveredEquityPoint = point)}
+									onmouseleave={() => (hoveredEquityPoint = null)}
+								/>
 							{/each}
 
 							<!-- Axis labels -->
-							<text x="10" y="120" font-size="12" fill="#6b7280">$</text>
-							<text x="280" y="230" font-size="12" fill="#6b7280" text-anchor="middle">Time</text>
+							<text
+								x="300"
+								y="250"
+								font-size="11"
+								fill="#6b7280"
+								text-anchor="middle"
+								font-weight="500">Date</text
+							>
+							<text
+								x="25"
+								y="20"
+								font-size="11"
+								fill="#6b7280"
+								text-anchor="middle"
+								font-weight="500">Balance</text
+							>
 						</svg>
+
+						{#if hoveredEquityPoint}
+							<div class="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+								<div class="flex items-center justify-between">
+									<div>
+										<span class="text-sm font-medium text-gray-700">Date:</span>
+										<span class="ml-2 text-sm text-gray-900">{hoveredEquityPoint.date}</span>
+									</div>
+									<div>
+										<span class="text-sm font-medium text-gray-700">Balance:</span>
+										<span class="text-primary-600 ml-2 text-sm font-bold">
+											{formatCurrency(hoveredEquityPoint.equity)}
+										</span>
+									</div>
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</div>
 
-			<!-- Win/Loss Distribution Pie Chart -->
-			<div class="card">
+			<!-- Outcome Pie Chart -->
+			<div class="card transition-shadow hover:shadow-md">
 				<div class="mb-6 flex items-center justify-between">
 					<div>
-						<h3 class="text-lg font-semibold text-gray-900">Distribution</h3>
-						<p class="text-sm text-gray-500">Win/Loss breakdown</p>
+						<h3 class="text-lg font-semibold text-gray-900">Outcomes</h3>
+						<p class="text-sm text-gray-500">Win/Loss/Breakeven</p>
 					</div>
 					<PieChart class="h-5 w-5 text-gray-400" />
 				</div>
@@ -414,18 +629,23 @@
 						<svg width="200" height="200" viewBox="0 0 200 200">
 							{#each getPieSegments() as segment}
 								<path
-									d={describeArc(100, 100, 80, segment.startAngle, segment.endAngle)}
+									d={describeArc(
+										100,
+										100,
+										hoveredPieSegment === segment.label ? 85 : 80,
+										segment.startAngle,
+										segment.endAngle
+									)}
 									fill={segment.color}
-									class="cursor-pointer transition-opacity hover:opacity-80"
-								>
-									<title>{segment.label}: {segment.count} ({segment.percentage}%)</title>
-								</path>
+									class="cursor-pointer transition-all duration-200"
+									onmouseenter={() => (hoveredPieSegment = segment.label)}
+									onmouseleave={() => (hoveredPieSegment = null)}
+									opacity={hoveredPieSegment === null || hoveredPieSegment === segment.label
+										? 1
+										: 0.5}
+								/>
 							{/each}
-
-							<!-- Center circle for donut effect -->
 							<circle cx="100" cy="100" r="50" fill="white" />
-
-							<!-- Center text -->
 							<text
 								x="100"
 								y="95"
@@ -436,15 +656,19 @@
 							>
 								{analytics?.winRate.toFixed(0)}%
 							</text>
-							<text x="100" y="115" text-anchor="middle" font-size="12" fill="#6b7280">
-								Win Rate
-							</text>
+							<text x="100" y="115" text-anchor="middle" font-size="12" fill="#6b7280"
+								>Win Rate</text
+							>
 						</svg>
 
-						<!-- Legend -->
 						<div class="mt-4 w-full space-y-2">
 							{#each getPieSegments() as segment}
-								<div class="flex items-center justify-between text-sm">
+								<div
+									class="flex cursor-pointer items-center justify-between rounded p-2 text-sm transition-colors"
+									class:bg-gray-100={hoveredPieSegment === segment.label}
+									onmouseenter={() => (hoveredPieSegment = segment.label)}
+									onmouseleave={() => (hoveredPieSegment = null)}
+								>
 									<div class="flex items-center gap-2">
 										<div class="h-3 w-3 rounded" style="background-color: {segment.color}"></div>
 										<span class="text-gray-700">{segment.label}</span>
@@ -460,176 +684,89 @@
 			</div>
 		</div>
 
-		<!-- Charts Row 2: Weekly P&L & Performance Metrics -->
-		<div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
-			<!-- Weekly P&L Bar Chart -->
-			<div class="card lg:col-span-2">
-				<div class="mb-6 flex items-center justify-between">
-					<div>
-						<h3 class="text-lg font-semibold text-gray-900">Weekly Performance</h3>
-						<p class="text-sm text-gray-500">Last 8 weeks P&L</p>
-					</div>
-					<Calendar class="h-5 w-5 text-gray-400" />
+		<!-- Period Performance Chart -->
+		<div class="card mb-8 transition-shadow hover:shadow-md">
+			<div class="mb-6 flex items-center justify-between">
+				<div>
+					<h3 class="text-lg font-semibold text-gray-900">Performance Over Time</h3>
+					<p class="text-sm text-gray-500">P&L by period</p>
 				</div>
-
-				{#if weeklyPnlData.length === 0}
-					<div class="py-12 text-center text-gray-500">No weekly data yet</div>
-				{:else}
-					<div class="overflow-x-auto">
-						<svg width="100%" height="240" viewBox="0 0 500 240" class="min-w-[500px]">
-							<!-- Zero line -->
-							<line x1="40" y1="120" x2="460" y2="120" stroke="#e5e7eb" stroke-width="2" />
-
-							<!-- Bars -->
-							{#each getBarChartData() as bar}
-								<rect
-									x={bar.x + 60}
-									y={bar.y}
-									width={bar.width}
-									height={bar.height}
-									fill={bar.color}
-									class="cursor-pointer transition-opacity hover:opacity-80"
-								>
-									<title>{bar.week}: {formatCurrency(bar.pnl)}</title>
-								</rect>
-
-								<!-- Week label -->
-								<text
-									x={bar.x + 60 + bar.width / 2}
-									y="230"
-									font-size="10"
-									fill="#6b7280"
-									text-anchor="middle"
-								>
-									{bar.week.split('-W')[1]}
-								</text>
-							{/each}
-
-							<!-- Axis labels -->
-							<text x="20" y="20" font-size="12" fill="#6b7280">$</text>
-							<text x="250" y="15" font-size="12" fill="#6b7280" text-anchor="middle">Week</text>
-						</svg>
-					</div>
-				{/if}
+				<div class="flex gap-2">
+					<button
+						onclick={() => (selectedChartPeriod = 'week')}
+						class="rounded px-3 py-1 text-xs font-medium transition-colors {selectedChartPeriod ===
+						'week'
+							? 'bg-primary-600 text-white'
+							: 'bg-gray-200 text-gray-700'}"
+					>
+						Week
+					</button>
+					<button
+						onclick={() => (selectedChartPeriod = 'month')}
+						class="rounded px-3 py-1 text-xs font-medium transition-colors {selectedChartPeriod ===
+						'month'
+							? 'bg-primary-600 text-white'
+							: 'bg-gray-200 text-gray-700'}"
+					>
+						Month
+					</button>
+				</div>
 			</div>
 
-			<!-- Trading Statistics -->
-			<div class="card">
-				<h3 class="mb-4 text-lg font-semibold text-gray-900">Statistics</h3>
-				<div class="space-y-4">
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Average Win</span>
-						<span class="text-profit font-semibold">
-							{formatCurrency(analytics?.averageWin || 0)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Average Loss</span>
-						<span class="text-loss font-semibold">
-							{formatCurrency(analytics?.averageLoss || 0)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Best Trade</span>
-						<span class="text-profit font-semibold">
-							{formatCurrency(analytics?.bestTrade?.netPnl || 0)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Worst Trade</span>
-						<span class="text-loss font-semibold">
-							{formatCurrency(analytics?.worstTrade?.netPnl || 0)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between border-t border-gray-200 pt-4">
-						<div class="flex items-center gap-2">
-							<Clock class="h-4 w-4 text-gray-500" />
-							<span class="text-gray-600">Avg Hold Time</span>
+			{#if getBarChartData().length === 0}
+				<div class="py-12 text-center text-gray-500">No period data yet</div>
+			{:else}
+				<div class="overflow-x-auto">
+					<svg width="100%" height="260" viewBox="0 0 500 260" class="min-w-[500px]">
+						<line x1="40" y1="120" x2="460" y2="120" stroke="#9ca3af" stroke-width="2" />
+
+						{#each getBarChartData() as bar}
+							<rect
+								x={bar.x + 60}
+								y={bar.y}
+								width={bar.width}
+								height={bar.height}
+								fill={bar.color}
+								class="cursor-pointer transition-all duration-200"
+								opacity={hoveredBar?.period === bar.period ? 1 : 0.8}
+								onmouseenter={() => (hoveredBar = bar)}
+								onmouseleave={() => (hoveredBar = null)}
+							/>
+							<text
+								x={bar.x + 60 + bar.width / 2}
+								y="250"
+								font-size="10"
+								fill="#6b7280"
+								text-anchor="middle"
+							>
+								{selectedChartPeriod === 'week'
+									? bar.period.split('-W')[1]
+									: bar.period.split('-')[1]}
+							</text>
+						{/each}
+					</svg>
+
+					{#if hoveredBar}
+						<div class="mt-2 rounded bg-gray-100 p-2 text-sm">
+							<span class="font-medium">{hoveredBar.period}:</span>
+							<span
+								class="ml-2 font-bold"
+								class:text-profit={hoveredBar.pnl >= 0}
+								class:text-loss={hoveredBar.pnl < 0}
+							>
+								{formatCurrency(hoveredBar.pnl)}
+							</span>
 						</div>
-						<span class="font-semibold text-gray-900">
-							{formatTime(analytics?.avgHoldTime || 0)}
-						</span>
-					</div>
+					{/if}
 				</div>
-			</div>
-		</div>
-
-		<!-- Performance Details & Streaks -->
-		<div class="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-			<!-- Advanced Metrics -->
-			<div class="card">
-				<h3 class="mb-4 text-lg font-semibold text-gray-900">Advanced Metrics</h3>
-				<div class="space-y-4">
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Win/Loss Ratio</span>
-						<span class="font-semibold text-gray-900">
-							{analytics?.winLossRatio.toFixed(2)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Average R:R</span>
-						<span class="font-semibold text-gray-900">
-							{analytics?.avgRR.toFixed(2)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Sharpe Ratio</span>
-						<span class="font-semibold text-gray-900">
-							{analytics?.sharpeRatio.toFixed(2)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Max Drawdown</span>
-						<span class="text-loss font-semibold">
-							{formatCurrency(analytics?.maxDrawdown || 0)}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<span class="text-gray-600">Recovery Factor</span>
-						<span class="font-semibold text-gray-900">
-							{analytics?.recoveryFactor.toFixed(2)}
-						</span>
-					</div>
-				</div>
-			</div>
-
-			<!-- Streaks -->
-			<div class="card">
-				<h3 class="mb-4 text-lg font-semibold text-gray-900">Streaks & Consistency</h3>
-				<div class="space-y-4">
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2">
-							<Award class="text-profit h-5 w-5" />
-							<span class="text-gray-600">Consecutive Wins</span>
-						</div>
-						<span class="font-semibold text-gray-900">
-							{analytics?.consecutiveWins || 0}
-						</span>
-					</div>
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2">
-							<AlertCircle class="text-loss h-5 w-5" />
-							<span class="text-gray-600">Consecutive Losses</span>
-						</div>
-						<span class="font-semibold text-gray-900">
-							{analytics?.consecutiveLosses || 0}
-						</span>
-					</div>
-					<div class="flex items-center justify-between border-t border-gray-200 pt-4">
-						<span class="text-gray-600">Total Trades</span>
-						<span class="font-semibold text-gray-900">
-							{analytics?.totalTrades || 0}
-						</span>
-					</div>
-				</div>
-			</div>
+			{/if}
 		</div>
 
 		<!-- Recent Trades -->
-		<div class="card">
+		<div class="card transition-shadow hover:shadow-md">
 			<div class="mb-4 flex items-center justify-between">
 				<h3 class="text-lg font-semibold text-gray-900">Recent Trades</h3>
-				<a href="/log" class="text-primary-600 hover:text-primary-700 text-sm"> View All </a>
+				<a href="/log" class="text-primary-600 hover:text-primary-700 text-sm">View All</a>
 			</div>
 
 			{#if recentTrades.length === 0}
@@ -654,13 +791,11 @@
 						</thead>
 						<tbody>
 							{#each recentTrades as trade}
-								<tr class="border-b border-gray-100 hover:bg-gray-50">
+								<tr class="border-b border-gray-100 transition-colors hover:bg-gray-50">
 									<td class="px-4 py-3 text-sm text-gray-900">
 										{new Date(trade.exitDate || trade.entryDate).toLocaleDateString()}
 									</td>
-									<td class="px-4 py-3 text-sm font-medium text-gray-900">
-										{trade.symbol}
-									</td>
+									<td class="px-4 py-3 text-sm font-medium text-gray-900">{trade.symbol}</td>
 									<td class="px-4 py-3">
 										<span
 											class="inline-flex items-center rounded px-2 py-1 text-xs font-medium {trade.type ===
@@ -671,15 +806,15 @@
 											{trade.type.toUpperCase()}
 										</span>
 									</td>
-									<td class="px-4 py-3 text-right text-sm text-gray-900">
-										${trade.entryPrice.toFixed(2)}
-									</td>
-									<td class="px-4 py-3 text-right text-sm text-gray-900">
-										${trade.exitPrice?.toFixed(2) || '-'}
-									</td>
-									<td class="px-4 py-3 text-right text-sm text-gray-900">
-										{trade.actualRR > 0 ? trade.actualRR.toFixed(2) : '-'}
-									</td>
+									<td class="px-4 py-3 text-right text-sm text-gray-900"
+										>${trade.entryPrice.toFixed(2)}</td
+									>
+									<td class="px-4 py-3 text-right text-sm text-gray-900"
+										>${trade.exitPrice?.toFixed(2) || '-'}</td
+									>
+									<td class="px-4 py-3 text-right text-sm text-gray-900"
+										>{trade.actualRR > 0 ? trade.actualRR.toFixed(2) : '-'}</td
+									>
 									<td
 										class="px-4 py-3 text-right text-sm font-semibold {trade.netPnl >= 0
 											? 'text-profit'

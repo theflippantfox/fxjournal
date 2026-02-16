@@ -9,5 +9,38 @@
     "currency": "USD",
     "notes": "",
     "id": "1771183838921"
+  },
+  {
+    "symbol": "BTCUSDT.P",
+    "name": "Bitcoin Perpentual Contracts",
+    "type": "crypto",
+    "exchange": "Crypto",
+    "tickSize": 0.01,
+    "lotSize": 1,
+    "currency": "USD",
+    "notes": "",
+    "id": "1771184562536"
+  },
+  {
+    "symbol": "XAUUSD",
+    "name": "Gold/United States Dollar",
+    "type": "forex",
+    "exchange": "Fx",
+    "tickSize": 0.01,
+    "lotSize": 1,
+    "currency": "USD",
+    "notes": "",
+    "id": "1771215425632"
+  },
+  {
+    "symbol": "USDJPY",
+    "name": "United States Dollar vs. Japanese Yen",
+    "type": "forex",
+    "exchange": "Fx",
+    "tickSize": 0.0001,
+    "lotSize": 1,
+    "currency": "USD",
+    "notes": "",
+    "id": "1771230392256"
   }
 ]

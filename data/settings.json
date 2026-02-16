@@ -1,8 +1,8 @@
 {
   "currency": "USD",
-  "timezone": "UTC",
+  "timezone": "Asia/Kolkata",
   "defaultAccount": "",
-  "theme": "light",
+  "theme": "dark",
   "checklistTemplate": "",
   "defaultLotSize": 1,
   "defaultRR": 2,

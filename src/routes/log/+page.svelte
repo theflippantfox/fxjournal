@@ -717,24 +717,14 @@
 					<h3 class="mb-4 text-lg font-semibold text-gray-900">Basic Information</h3>
 					<div class="grid grid-cols-2 gap-4 md:grid-cols-3">
 						<div>
-							<label class="label">Symbol *</label>
-							<input
-								type="text"
-								bind:value={formData.symbol}
-								required
-								class="input"
-								placeholder="AAPL"
-							/>
-						</div>
-
-						<div>
-							<label class="label">Instrument</label>
-							<select bind:value={formData.instrumentId} class="select">
-								<option value="">Select...</option>
+							<label class="label">Instrument *</label>
+							<select bind:value={formData.instrumentId} required class="select">
+								<option value="">Select Instrument...</option>
 								{#each instruments as instrument}
 									<option value={instrument.id}>{instrument.symbol} - {instrument.name}</option>
 								{/each}
 							</select>
+							<p class="mt-1 text-xs text-gray-500">The symbol/asset you traded</p>
 						</div>
 
 						<div>

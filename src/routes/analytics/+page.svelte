@@ -2,13 +2,28 @@
 	import { onMount } from 'svelte';
 	import { selectedAccountId } from '$lib/stores';
 	import { formatCurrency, calculateAnalytics, formatTime } from '$lib/utils/analytics';
-	import { TrendingUp, Target, Award, BarChart3, Clock, Zap } from 'lucide-svelte';
+	import type { AIInsight } from '$lib/utils/aiAnalyzer';
+	import {
+		TrendingUp,
+		Target,
+		Award,
+		BarChart3,
+		Clock,
+		Zap,
+		Sparkles,
+		CheckCircle,
+		XCircle,
+		Info,
+		AlertTriangle
+	} from 'lucide-svelte';
 	import type { Trade, Strategy } from '$lib/types';
 
 	let trades = $state<Trade[]>([]);
 	let strategies = $state<Strategy[]>([]);
 	let analytics = $state<any>(null);
 	let loading = $state(true);
+	let aiInsights = $state<AIInsight[]>([]);
+	let loadingAI = $state(false);
 
 	// Chart data
 	let monthlyPnlData = $state<{ month: string; pnl: number }[]>([]);
@@ -36,10 +51,27 @@
 
 			// Process data for charts
 			processChartData();
+
+			// Load AI insights
+			loadAIAnalysis(accountId);
 		} catch (error) {
 			console.error('Error loading data:', error);
 		} finally {
 			loading = false;
+		}
+	}
+
+	async function loadAIAnalysis(accountId: string) {
+		loadingAI = true;
+		try {
+			const res = await fetch(`/api/ai-analysis?accountId=${accountId}`);
+			const data = await res.json();
+			aiInsights = data.insights || [];
+		} catch (error) {
+			console.error('AI analysis failed:', error);
+			aiInsights = [];
+		} finally {
+			loadingAI = false;
 		}
 	}
 
@@ -237,6 +269,86 @@
 			<h1 class="mb-2 text-3xl font-bold text-gray-900">Analytics</h1>
 			<p class="text-gray-600">Detailed performance analysis and insights</p>
 		</div>
+
+		<!-- AI Insights Section -->
+		{#if loadingAI}
+			<div class="card from-primary-50 border-primary-200 mb-8 bg-gradient-to-r to-blue-50">
+				<div class="flex items-center gap-3">
+					<Sparkles class="text-primary-600 h-6 w-6 animate-pulse" />
+					<div class="flex-1">
+						<h3 class="text-lg font-semibold text-gray-900">Analyzing your performance...</h3>
+						<p class="mt-1 text-sm text-gray-600">AI is generating detailed insights</p>
+					</div>
+				</div>
+			</div>
+		{:else if aiInsights.length > 0}
+			<div class="mb-8">
+				<div class="mb-4 flex items-center gap-2">
+					<Sparkles class="text-primary-600 h-6 w-6" />
+					<h3 class="text-xl font-semibold text-gray-900">Deep Performance Insights</h3>
+					<span class="text-sm text-gray-500">({aiInsights.length} insights)</span>
+				</div>
+				<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+					{#each aiInsights as insight}
+						<div
+							class="card {insight.type === 'success'
+								? 'border-l-4 border-green-500 bg-green-50'
+								: insight.type === 'warning'
+									? 'border-l-4 border-yellow-500 bg-yellow-50'
+									: insight.type === 'danger'
+										? 'border-l-4 border-red-500 bg-red-50'
+										: insight.type === 'info'
+											? 'border-l-4 border-blue-500 bg-blue-50'
+											: 'border-l-4 border-purple-500 bg-purple-50'} transition-shadow hover:shadow-md"
+						>
+							<div class="flex items-start gap-3">
+								<svelte:component
+									this={{
+										success: CheckCircle,
+										warning: AlertTriangle,
+										danger: XCircle,
+										info: Info
+									}[insight.type] || Sparkles}
+									class="mt-0.5 h-5 w-5 flex-shrink-0 {insight.type === 'success'
+										? 'text-green-600'
+										: insight.type === 'warning'
+											? 'text-yellow-600'
+											: insight.type === 'danger'
+												? 'text-red-600'
+												: insight.type === 'info'
+													? 'text-blue-600'
+													: 'text-purple-600'}"
+								/>
+								<div class="min-w-0 flex-1">
+									<div class="flex items-start justify-between gap-2">
+										<h4 class="text-sm font-semibold text-gray-900">{insight.title}</h4>
+										<span
+											class="flex-shrink-0 rounded-full px-2 py-0.5 text-xs {insight.severity ===
+											'high'
+												? 'bg-red-100 text-red-700'
+												: insight.severity === 'medium'
+													? 'bg-yellow-100 text-yellow-700'
+													: 'bg-blue-100 text-blue-700'}"
+										>
+											{insight.severity.toUpperCase()}
+										</span>
+									</div>
+									<p class="mt-1 text-sm text-gray-700">{insight.message}</p>
+									<div class="mt-2 rounded bg-white/50 p-2">
+										<p class="text-sm font-medium text-gray-900">💡 {insight.actionable}</p>
+									</div>
+									{#if insight.category}
+										<span class="mt-2 inline-block text-xs text-gray-500"
+											>Category: {insight.category}</span
+										>
+									{/if}
+								</div>
+							</div>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Key Metrics -->
 		<div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">

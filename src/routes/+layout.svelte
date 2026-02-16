@@ -1,7 +1,7 @@
 <script lang="ts">
 	import './layout.css';
 	import { page } from '$app/stores';
-	import { selectedAccountId, accounts } from '$lib/stores';
+	import { selectedAccountId, accounts, theme } from '$lib/stores';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
@@ -11,14 +11,21 @@
 		Settings,
 		TrendingUp,
 		ChevronDown,
-		Plus
+		Plus,
+		Moon,
+		Sun,
+		Calendar
 	} from 'lucide-svelte';
 
 	let showAccountDropdown = $state(false);
 	let currentAccounts = $state<any[]>([]);
 	let currentSelectedId = $state('');
+	let currentTheme = $state<'light' | 'dark'>('light');
 
 	onMount(async () => {
+		// Initialize theme
+		theme.init();
+
 		const res = await fetch('/api/accounts');
 		const data = await res.json();
 		accounts.set(data);
@@ -38,12 +45,17 @@
 		currentSelectedId = value;
 	});
 
+	theme.subscribe((value) => {
+		currentTheme = value;
+	});
+
 	const selectedAccount = $derived(currentAccounts.find((acc) => acc.id === currentSelectedId));
 
 	const navigation = [
 		{ name: 'Dashboard', href: '/', icon: LayoutDashboard },
 		{ name: 'Trade Log', href: '/log', icon: BookOpen },
 		{ name: 'Analytics', href: '/analytics', icon: BarChart3 },
+		{ name: 'Calendar', href: '/calendar', icon: Calendar },
 		{ name: 'Settings', href: '/settings', icon: Settings }
 	];
 
@@ -64,6 +76,10 @@
 			showAccountDropdown = false;
 		}
 	}
+
+	function toggleTheme() {
+		theme.toggle();
+	}
 </script>
 
 <svelte:window onclick={handleClickOutside} />
@@ -73,9 +89,23 @@
 	<div class="flex w-64 flex-col border-r border-gray-200 bg-white">
 		<!-- Logo -->
 		<div class="border-b border-gray-200 p-6">
-			<div class="flex items-center gap-2">
-				<TrendingUp class="text-primary-600 h-8 w-8" />
-				<h1 class="text-xl font-bold text-gray-900">TradeJournal</h1>
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<TrendingUp class="text-primary-600 h-8 w-8" />
+					<h1 class="text-xl font-bold text-gray-900">TradeJournal</h1>
+				</div>
+				<!-- Theme Toggle -->
+				<button
+					onclick={toggleTheme}
+					class="rounded-lg p-2 transition-colors hover:bg-gray-100"
+					title="Toggle theme"
+				>
+					{#if currentTheme === 'dark'}
+						<Sun class="h-5 w-5 text-gray-600" />
+					{:else}
+						<Moon class="h-5 w-5 text-gray-600" />
+					{/if}
+				</button>
 			</div>
 		</div>
 

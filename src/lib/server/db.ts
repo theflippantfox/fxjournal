@@ -92,14 +92,19 @@ export async function getTrades(accountId?: string): Promise<Trade[]> {
   return trades;
 }
 
+export async function getTrade(id: string): Promise<Trade | undefined> {
+  const trades = await readJSON<Trade[]>('trades.json', []);
+  return trades.find(trade => trade.id === id);
+}
+
 export async function saveTrades(trades: Trade[]): Promise<void> {
   await writeJSON('trades.json', trades);
 }
 
-export async function getTrade(id: string): Promise<Trade | null> {
-  const trades = await getTrades();
-  return trades.find(trade => trade.id === id) || null;
-}
+//export async function getTrade(id: string): Promise<Trade | null> {
+//  const trades = await getTrades();
+//  return trades.find(trade => trade.id === id) || null;
+//}
 
 export async function createTrade(trade: Omit<Trade, 'id'>): Promise<Trade> {
   const trades = await getTrades();
