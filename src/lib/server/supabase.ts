@@ -1,9 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/private';
+import { env } from '$env/dynamic/public';
 
-// This runs at runtime (in Cloudflare Worker), so env vars are available
 export const supabase = createClient(
-  env.PUBLIC_SUPABASE_URL ?? '',      // ← this is '' at build time
+  env.PUBLIC_SUPABASE_URL ?? '',
   env.PUBLIC_SUPABASE_ANON_KEY ?? ''
 );
 
