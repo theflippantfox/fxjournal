@@ -1,6 +1,9 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY } from '$env/static/private';
 import type { Trade } from '$lib/types';
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { env } from '$env/dynamic/private';
+
+const GEMINI_API_KEY = env.GEMINI_API_KEY || ''
 
 function getModel() {
   const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
