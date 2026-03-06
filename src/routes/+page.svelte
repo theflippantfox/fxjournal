@@ -12,8 +12,6 @@
   let loading = true;
   let accountId = "";
   let accountList: Account[] = [];
-
-  // Market ticker + open trade live prices
   let ticker: Record<string, any> = {};
   let livePrices: Record<string, any> = {};
   let tickerInterval: ReturnType<typeof setInterval> | null = null;
@@ -60,7 +58,6 @@
     fetchOpenPrices();
   }
 
-  // Reactive floating P&L map — recomputes whenever livePrices or trades changes
   $: floatingPnLMap = (() => {
     const map: Record<string, { pnl: number; cmp: number } | null> = {};
     for (const trade of trades) {
@@ -78,9 +75,12 @@
           ? lp.price - trade.entry_price
           : trade.entry_price - lp.price;
       map[trade.id] = {
-        pnl: Math.round(
-          diff * (trade.quantity ?? 1) - trade.commissions - trade.fees,
-        ),
+        pnl:
+          Math.round(
+            diff * (trade.quantity ?? 1) * ((trade as any).leverage ?? 1) -
+              trade.commissions -
+              trade.fees,
+          ) / 100,
         cmp: lp.price,
       };
     }
@@ -91,10 +91,6 @@
     (s, t) => s + (floatingPnLMap[t.id]?.pnl ?? 0),
     0,
   );
-
-  function getFloatingPnL(trade: Trade) {
-    return floatingPnLMap[trade.id] ?? null;
-  }
 
   onMount(() => {
     if (accountId) loadTrades();
@@ -125,11 +121,13 @@
           closed.filter((t) => t.outcome === "loss").length,
       )
     : 0;
-  $: largestWin = closed.length ? Math.max(...closed.map((t) => t.net_pnl)) : 0;
-  $: largestLoss = closed.length
-    ? Math.min(...closed.map((t) => t.net_pnl))
-    : 0;
   $: currentAccount = accountList.find((a) => a.id === accountId);
+  $: balanceChange = currentAccount
+    ? currentAccount.current_balance - currentAccount.initial_balance
+    : 0;
+  $: balancePct = currentAccount?.initial_balance
+    ? (balanceChange / currentAccount.initial_balance) * 100
+    : 0;
 
   $: monthlyPnL = (() => {
     const months: Record<string, number> = {};
@@ -139,195 +137,227 @@
     }
     return Object.entries(months)
       .slice(-6)
-      .map(([m, v]) => ({ month: m, pnl: v }));
+      .map(([month, pnl]) => ({ month, pnl }));
   })();
 
-  $: recentTrades = trades.slice(0, 8);
+  $: recentTrades = trades.slice(0, 6);
 
   function inr(n: number) {
     return (
-      "₹" +
-      Math.abs(n).toLocaleString("en-IN", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
+      "₹" + Math.abs(n).toLocaleString("en-IN", { maximumFractionDigits: 0 })
     );
-  }
-  function signedInr(n: number) {
-    return (n >= 0 ? "+" : "-") + inr(n);
   }
 </script>
 
-<div class="p-6 space-y-5">
-  <!-- Market Ticker Bar -->
-  <div class="card py-3 overflow-hidden">
-    <div class="flex items-center gap-6 overflow-x-auto scrollbar-hide">
-      <span class="text-xs text-gray-600 flex-shrink-0">🇮🇳 Live Market</span>
+<div class="page space-y-4 animate-fade-up">
+  <!-- Ticker bar -->
+  <div class="overflow-x-auto -mx-4 px-4">
+    <div class="flex items-center gap-1 w-max">
+      <span class="section-title mr-2 flex-shrink-0">🇮🇳 Live</span>
       {#each TICKER_SYMBOLS as sym}
         {@const t = ticker[sym]}
-        <div class="flex items-center gap-2 flex-shrink-0">
-          <span class="text-xs font-medium text-gray-300">{sym}</span>
+        <div class="ticker-pill">
+          <span class="font-semibold" style="color: var(--text)">{sym}</span>
           {#if t}
-            <span class="text-xs font-semibold text-white"
+            <span class="font-mono" style="color: var(--text2)"
               >₹{t.price?.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
+                maximumFractionDigits: 0,
               })}</span
             >
             <span
-              class="text-xs {t.changePct >= 0
-                ? 'text-emerald-400'
-                : 'text-red-400'}"
+              class="font-semibold"
+              style="color: {t.changePct >= 0 ? 'var(--green)' : 'var(--red)'}"
             >
               {t.changePct >= 0 ? "▲" : "▼"}{Math.abs(t.changePct).toFixed(2)}%
             </span>
           {:else}
-            <span class="text-xs text-gray-600">—</span>
+            <span style="color: var(--text3)">—</span>
           {/if}
         </div>
       {/each}
     </div>
   </div>
 
+  <!-- Page header -->
   <div class="flex items-center justify-between">
     <div>
-      <h1 class="text-2xl font-bold text-white">Dashboard</h1>
-      <p class="text-gray-500 text-sm">
-        {currentAccount?.name ?? "No account selected"} · {currentAccount?.broker ??
-          ""} · {currentAccount?.currency ?? "INR"}
+      <h1 class="text-xl font-bold" style="color: var(--text)">Dashboard</h1>
+      <p class="text-xs mt-0.5" style="color: var(--text3)">
+        {currentAccount?.name ?? "No account"} · {currentAccount?.broker ?? ""}
       </p>
     </div>
-    <a href="/log?new=1" class="btn-primary">+ New Trade</a>
+    <a href="/log" class="btn-primary btn-sm">
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2.5"
+        ><line x1="12" y1="5" x2="12" y2="19" /><line
+          x1="5"
+          y1="12"
+          x2="19"
+          y2="12"
+        /></svg
+      >
+      New Trade
+    </a>
   </div>
 
   {#if loading}
-    <div class="text-center py-20 text-gray-500">Loading...</div>
+    <div
+      class="flex items-center justify-center py-20"
+      style="color: var(--text3)"
+    >
+      <svg
+        class="animate-spin mr-2"
+        width="18"
+        height="18"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        ><path d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" opacity=".25" /><path
+          d="M21 12a9 9 0 00-9-9"
+        /></svg
+      >
+      Loading...
+    </div>
   {:else if !accountId}
     <div class="card text-center py-12">
-      <p class="text-gray-400 mb-4">
+      <p class="mb-4" style="color: var(--text2)">
         No account selected. Create one in Settings.
       </p>
       <a href="/settings" class="btn-primary">Go to Settings</a>
     </div>
   {:else}
-    <!-- Account balance -->
+    <!-- Balance hero card -->
     {#if currentAccount}
       <div
-        class="card bg-gradient-to-r from-sky-900/20 to-sky-950/20 border-sky-800/30"
+        class="card-glass p-5 relative overflow-hidden"
+        style="background: linear-gradient(135deg, rgba(59,130,246,0.12) 0%, rgba(99,102,241,0.08) 100%); border-color: rgba(59,130,246,0.2)"
       >
-        <div class="flex items-center justify-between">
-          <div>
-            <div class="text-sm text-gray-500">Portfolio Balance</div>
-            <div class="text-3xl font-bold text-white mt-1">
-              ₹{currentAccount.current_balance?.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-              })}
-            </div>
+        <!-- Decorative glow -->
+        <div
+          class="absolute top-0 right-0 w-48 h-48 rounded-full pointer-events-none"
+          style="background: radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%); transform: translate(30%, -30%)"
+        ></div>
+        <div class="relative">
+          <div
+            class="text-xs font-medium mb-1"
+            style="color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em"
+          >
+            Portfolio Balance
           </div>
-          <div class="text-right">
-            <div class="text-sm text-gray-500">Initial Capital</div>
-            <div class="text-lg text-gray-400">
-              ₹{currentAccount.initial_balance?.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-              })}
-            </div>
-            <div
-              class="text-sm font-semibold mt-1 {currentAccount.current_balance -
-                currentAccount.initial_balance >=
+          <div
+            class="text-3xl font-bold tracking-tight"
+            style="color: var(--text)"
+          >
+            ₹{currentAccount.current_balance?.toLocaleString("en-IN", {
+              maximumFractionDigits: 0,
+            })}
+          </div>
+          <div class="flex items-center gap-3 mt-2">
+            <span
+              class="text-xs font-semibold px-2 py-0.5 rounded-full {balanceChange >=
               0
-                ? 'text-emerald-400'
-                : 'text-red-400'}"
+                ? 'pnl-positive'
+                : 'pnl-negative'}"
+              style="background: {balanceChange >= 0
+                ? 'rgba(16,185,129,0.1)'
+                : 'rgba(244,63,94,0.1)'}"
             >
-              {currentAccount.current_balance -
-                currentAccount.initial_balance >=
+              {balanceChange >= 0 ? "+" : ""}{inr(balanceChange)} ({balancePct >=
               0
-                ? "▲"
-                : "▼"}
-              {Math.abs(
-                ((currentAccount.current_balance -
-                  currentAccount.initial_balance) /
-                  currentAccount.initial_balance) *
-                  100,
-              ).toFixed(2)}%
-            </div>
+                ? "+"
+                : ""}{balancePct.toFixed(2)}%)
+            </span>
+            <span class="text-xs" style="color: var(--text3)"
+              >from ₹{currentAccount.initial_balance?.toLocaleString("en-IN", {
+                maximumFractionDigits: 0,
+              })}</span
+            >
           </div>
         </div>
       </div>
     {/if}
 
-    <!-- Floating P&L for open positions -->
+    <!-- Floating P&L -->
     {#if open.length > 0}
-      <div class="card border-sky-800/30 bg-sky-950/10">
+      <div
+        class="card-glass"
+        style="border-color: rgba(6,182,212,0.2); background: rgba(6,182,212,0.04)"
+      >
         <div class="flex items-center gap-2 mb-3">
-          <div class="w-2 h-2 rounded-full bg-sky-400 animate-pulse"></div>
-          <span class="text-sky-400 font-semibold text-sm"
-            >{open.length} Open Position{open.length > 1 ? "s" : ""} — Floating P&L</span
+          <div class="live-dot"></div>
+          <span class="text-xs font-semibold" style="color: var(--cyan)"
+            >{open.length} Open Position{open.length > 1 ? "s" : ""}</span
           >
-          <span class="text-xs text-gray-600 ml-auto"
-            >CMP via Yahoo Finance · 20s refresh</span
+          <span class="text-xs ml-auto" style="color: var(--text3)"
+            >20s refresh</span
           >
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div class="grid grid-cols-2 gap-2 mb-3">
           {#each open as trade (trade.id)}
             {@const fp = floatingPnLMap[trade.id]}
             {@const lp = livePrices[trade.symbol]}
             <div
-              class="bg-gray-900/60 rounded-xl p-3 border {fp
+              class="rounded-xl p-3"
+              style="background: var(--surface); border: 1px solid {fp
                 ? fp.pnl >= 0
-                  ? 'border-emerald-800/40'
-                  : 'border-red-800/40'
-                : 'border-gray-800'}"
+                  ? 'rgba(16,185,129,0.2)'
+                  : 'rgba(244,63,94,0.2)'
+                : 'var(--border)'}"
             >
               <div class="flex justify-between items-start mb-1">
-                <span class="font-bold text-white text-sm">{trade.symbol}</span>
-                <span
-                  class="text-xs {trade.type === 'long'
-                    ? 'text-emerald-400'
-                    : 'text-red-400'}">{trade.type === "long" ? "▲" : "▼"}</span
+                <span class="font-bold text-sm" style="color: var(--text)"
+                  >{trade.symbol}</span
                 >
+                <span
+                  class="text-xs font-semibold"
+                  style="color: {trade.type === 'long'
+                    ? 'var(--green)'
+                    : 'var(--red)'}"
+                >
+                  {trade.type === "long" ? "▲" : "▼"}
+                  {trade.type}
+                </span>
               </div>
-              <div class="text-xs text-gray-500 mb-1">
-                Entry: {inr(trade.entry_price)}
+              <div class="text-xs mb-1.5" style="color: var(--text3)">
+                Entry {inr(trade.entry_price)}
               </div>
               {#if fp && lp}
-                <div class="text-xs text-sky-300">CMP: {inr(fp.cmp)}</div>
                 <div
-                  class="font-bold {fp.pnl >= 0
-                    ? 'text-emerald-400'
-                    : 'text-red-400'} mt-1"
+                  class="text-xs font-mono mb-0.5"
+                  style="color: var(--cyan)"
+                >
+                  CMP {inr(fp.cmp)}
+                </div>
+                <div
+                  class="font-bold text-sm {fp.pnl >= 0
+                    ? 'pnl-positive'
+                    : 'pnl-negative'}"
                 >
                   {fp.pnl >= 0 ? "+" : ""}{inr(fp.pnl)}
-                  <span class="text-xs font-normal text-gray-500 ml-1"
-                    >floating</span
-                  >
                 </div>
-                {#if lp.changePct !== undefined}
-                  <div
-                    class="text-xs {lp.changePct >= 0
-                      ? 'text-emerald-600'
-                      : 'text-red-600'} mt-0.5"
-                  >
-                    {lp.changePct >= 0 ? "▲" : "▼"}{Math.abs(
-                      lp.changePct,
-                    ).toFixed(2)}% today
-                  </div>
-                {/if}
               {:else}
-                <div class="text-xs text-gray-600 italic mt-1">
-                  fetching CMP...
-                </div>
+                <div class="text-xs" style="color: var(--text3)">fetching…</div>
               {/if}
             </div>
           {/each}
         </div>
         <div
-          class="border-t border-gray-800 pt-3 flex justify-between items-center"
+          class="flex justify-between items-center pt-2"
+          style="border-top: 1px solid var(--border)"
         >
-          <span class="text-sm text-gray-400">Total Floating P&L</span>
+          <span class="text-xs" style="color: var(--text2)"
+            >Total Floating P&L</span
+          >
           <span
-            class="text-xl font-bold {totalFloating >= 0
-              ? 'text-emerald-400'
-              : 'text-red-400'}"
+            class="text-base font-bold {totalFloating >= 0
+              ? 'pnl-positive'
+              : 'pnl-negative'}"
           >
             {totalFloating >= 0 ? "+" : ""}{inr(totalFloating)}
           </span>
@@ -335,85 +365,86 @@
       </div>
     {/if}
 
-    <!-- Key stats -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="stat-card">
-        <div class="stat-label">Total Trades</div>
-        <div class="stat-value text-white">{closed.length}</div>
-        <div class="text-xs text-sky-400">{open.length} open</div>
-      </div>
+    <!-- Key stats grid -->
+    <div class="grid grid-cols-2 gap-3 animate-fade-up delay-1">
       <div class="stat-card">
         <div class="stat-label">Win Rate</div>
         <div
-          class="stat-value {winRate >= 50
-            ? 'text-emerald-400'
-            : 'text-red-400'}"
+          class="stat-value {winRate >= 50 ? 'pnl-positive' : 'pnl-negative'}"
         >
           {winRate}%
         </div>
-        <div class="text-xs text-gray-500">
-          {closed.filter((t) => t.outcome === "win").length}W / {closed.filter(
+        <div class="text-xs mt-1" style="color: var(--text3)">
+          {closed.filter((t) => t.outcome === "win").length}W · {closed.filter(
             (t) => t.outcome === "loss",
           ).length}L
         </div>
       </div>
       <div class="stat-card">
-        <div class="stat-label">Total P&L</div>
+        <div class="stat-label">Net P&L</div>
         <div
-          class="stat-value {totalPnL >= 0
-            ? 'text-emerald-400'
-            : 'text-red-400'}"
+          class="stat-value {totalPnL >= 0 ? 'pnl-positive' : 'pnl-negative'}"
         >
           {inr(totalPnL)}
         </div>
-        <div class="text-xs text-gray-500">Exp: {inr(expectancy)}/trade</div>
+        <div class="text-xs mt-1" style="color: var(--text3)">
+          {closed.length} closed trades
+        </div>
       </div>
       <div class="stat-card">
         <div class="stat-label">Profit Factor</div>
         <div
           class="stat-value {profitFactor >= 1.5
-            ? 'text-emerald-400'
+            ? 'pnl-positive'
             : profitFactor >= 1
-              ? 'text-yellow-400'
-              : 'text-red-400'}"
+              ? ''
+              : 'pnl-negative'}"
+          style={profitFactor >= 1 && profitFactor < 1.5
+            ? "color: var(--yellow)"
+            : ""}
         >
           {profitFactor}
         </div>
-        <div class="text-xs text-gray-500">
+        <div class="text-xs mt-1" style="color: var(--text3)">
           {profitFactor >= 1.5
-            ? "Excellent"
+            ? "✓ Strong edge"
             : profitFactor >= 1
               ? "Marginal"
-              : "Losing"}
+              : "Losing system"}
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Expectancy</div>
+        <div
+          class="stat-value {expectancy >= 0 ? 'pnl-positive' : 'pnl-negative'}"
+        >
+          {inr(expectancy)}
+        </div>
+        <div class="text-xs mt-1" style="color: var(--text3)">
+          per trade avg
         </div>
       </div>
     </div>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <div class="stat-card">
-        <div class="stat-label">Avg Win</div>
-        <div class="stat-value text-emerald-400">{inr(avgWin)}</div>
+    <!-- Avg win / loss row -->
+    <div class="grid grid-cols-2 gap-3 animate-fade-up delay-2">
+      <div class="card p-4">
+        <div class="section-title mb-2">Avg Win</div>
+        <div class="text-xl font-bold pnl-positive">+{inr(avgWin)}</div>
       </div>
-      <div class="stat-card">
-        <div class="stat-label">Avg Loss</div>
-        <div class="stat-value text-red-400">-{inr(avgLoss)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Largest Win</div>
-        <div class="stat-value text-emerald-400">{inr(largestWin)}</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Largest Loss</div>
-        <div class="stat-value text-red-400">-{inr(Math.abs(largestLoss))}</div>
+      <div class="card p-4">
+        <div class="section-title mb-2">Avg Loss</div>
+        <div class="text-xl font-bold pnl-negative">-{inr(avgLoss)}</div>
       </div>
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <!-- Monthly chart + Recent trades side by side on desktop, stacked mobile -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-up delay-3">
       <!-- Monthly P&L -->
       <div class="card">
-        <h2 class="font-semibold text-gray-200 mb-4">Monthly Performance</h2>
+        <div class="section-title mb-3">Monthly Performance</div>
         {#if monthlyPnL.length === 0}
-          <p class="text-gray-500 text-sm text-center py-8">
+          <p class="text-sm text-center py-8" style="color: var(--text3)">
             No closed trades yet
           </p>
         {:else}
@@ -422,26 +453,27 @@
               {@const maxAbs = Math.max(
                 ...monthlyPnL.map((x) => Math.abs(x.pnl)),
               )}
-              <div class="flex items-center gap-3">
-                <span class="text-xs text-gray-500 w-16 flex-shrink-0"
-                  >{m.month}</span
+              <div class="flex items-center gap-2">
+                <span
+                  class="text-xs w-14 flex-shrink-0 font-mono"
+                  style="color: var(--text3)"
+                  >{m.month.slice(5)}/{m.month.slice(2, 4)}</span
                 >
-                <div
-                  class="flex-1 bg-gray-800 rounded-full h-2 overflow-hidden"
-                >
+                <div class="flex-1 progress-bar">
                   <div
-                    class="h-full rounded-full {m.pnl >= 0
-                      ? 'bg-emerald-500'
-                      : 'bg-red-500'}"
+                    class="progress-fill"
                     style="width: {maxAbs > 0
                       ? (Math.abs(m.pnl) / maxAbs) * 100
-                      : 0}%"
+                      : 0}%; background: {m.pnl >= 0
+                      ? 'var(--green)'
+                      : 'var(--red)'}"
                   ></div>
                 </div>
                 <span
-                  class="text-xs font-semibold w-24 text-right {m.pnl >= 0
-                    ? 'text-emerald-400'
-                    : 'text-red-400'}">{signedInr(m.pnl)}</span
+                  class="text-xs font-semibold font-mono w-20 text-right {m.pnl >=
+                  0
+                    ? 'pnl-positive'
+                    : 'pnl-negative'}">{m.pnl >= 0 ? "+" : ""}{inr(m.pnl)}</span
                 >
               </div>
             {/each}
@@ -451,62 +483,64 @@
 
       <!-- Recent trades -->
       <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h2 class="font-semibold text-gray-200">Recent Trades</h2>
-          <a href="/log" class="text-sm text-sky-400 hover:text-sky-300"
-            >View all →</a
+        <div class="flex items-center justify-between mb-3">
+          <div class="section-title">Recent Trades</div>
+          <a
+            href="/log"
+            class="text-xs font-medium"
+            style="color: var(--accent)">View all →</a
           >
         </div>
         {#if recentTrades.length === 0}
-          <p class="text-gray-500 text-sm text-center py-8">
+          <p class="text-sm text-center py-8" style="color: var(--text3)">
             No trades logged yet
           </p>
         {:else}
-          <div class="space-y-2">
+          <div class="space-y-0">
             {#each recentTrades as trade (trade.id)}
               {@const fp = floatingPnLMap[trade.id]}
               <div
-                class="flex items-center gap-3 py-2 border-b border-gray-800 last:border-0"
+                class="flex items-center gap-2.5 py-2.5"
+                style="border-bottom: 1px solid var(--border)"
               >
                 <div
-                  class="w-2 h-2 rounded-full flex-shrink-0 {trade.status ===
+                  class="w-1.5 h-1.5 rounded-full flex-shrink-0 {trade.status ===
                   'open'
-                    ? 'bg-sky-400 animate-pulse'
-                    : trade.type === 'long'
-                      ? 'bg-emerald-500'
-                      : 'bg-red-500'}"
+                    ? 'live-dot'
+                    : ''}"
+                  style={trade.status !== "open"
+                    ? "background: " +
+                      (trade.type === "long" ? "var(--green)" : "var(--red)")
+                    : ""}
                 ></div>
-                <span class="text-sm font-medium text-gray-200 w-24 truncate"
-                  >{trade.symbol}</span
+                <span
+                  class="text-sm font-semibold w-20 truncate"
+                  style="color: var(--text)">{trade.symbol}</span
                 >
-                <span class="text-xs text-gray-500 flex-1"
-                  >{trade.entry_date?.slice(0, 10)}</span
+                <span class="text-xs flex-1" style="color: var(--text3)"
+                  >{trade.entry_date?.slice(5, 10)}</span
                 >
                 {#if trade.status === "open"}
-                  <span
-                    class="badge bg-sky-900/40 text-sky-400 border border-sky-800/40 text-xs"
-                    >open</span
-                  >
+                  <span class="badge badge-open">open</span>
                   {#if fp}
                     <span
-                      class="{fp.pnl >= 0
+                      class="text-xs font-semibold font-mono {fp.pnl >= 0
                         ? 'pnl-positive'
-                        : 'pnl-negative'} text-sm font-semibold"
+                        : 'pnl-negative'}"
+                      >{fp.pnl >= 0 ? "+" : ""}{inr(fp.pnl)}</span
                     >
-                      {fp.pnl >= 0 ? "+" : ""}{inr(fp.pnl)}
-                      <span class="text-xs text-gray-600 font-normal"
-                        >float</span
-                      >
-                    </span>
                   {:else}
-                    <span class="text-gray-600 text-xs">fetching...</span>
+                    <span class="text-xs" style="color: var(--text3)">—</span>
                   {/if}
                 {:else}
-                  <span class="badge-{trade.outcome}">{trade.outcome}</span>
+                  <span class="badge badge-{trade.outcome}"
+                    >{trade.outcome}</span
+                  >
                   <span
-                    class="{trade.net_pnl >= 0
+                    class="text-xs font-semibold font-mono {trade.net_pnl >= 0
                       ? 'pnl-positive'
-                      : 'pnl-negative'} text-sm">{inr(trade.net_pnl)}</span
+                      : 'pnl-negative'}"
+                    >{trade.net_pnl >= 0 ? "+" : ""}{inr(trade.net_pnl)}</span
                   >
                 {/if}
               </div>
@@ -516,38 +550,29 @@
       </div>
     </div>
 
-    <!-- Quick links -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <a
-        href="/log?new=1"
-        class="card hover:border-sky-700 transition-colors cursor-pointer group"
-      >
-        <div class="text-2xl mb-2">📝</div>
-        <div class="font-semibold text-gray-200 group-hover:text-sky-400">
-          Log a Trade
-        </div>
-        <div class="text-sm text-gray-500">NSE, BSE, MCX, F&O, Currency</div>
-      </a>
-      <a
-        href="/analytics"
-        class="card hover:border-sky-700 transition-colors cursor-pointer group"
-      >
-        <div class="text-2xl mb-2">✨</div>
-        <div class="font-semibold text-gray-200 group-hover:text-sky-400">
-          Gemini AI Analysis
-        </div>
-        <div class="text-sm text-gray-500">9-module performance analysis</div>
-      </a>
-      <a
-        href="/advanced-analytics"
-        class="card hover:border-sky-700 transition-colors cursor-pointer group"
-      >
-        <div class="text-2xl mb-2">🔬</div>
-        <div class="font-semibold text-gray-200 group-hover:text-sky-400">
-          Advanced Analytics
-        </div>
-        <div class="text-sm text-gray-500">Sharpe · Monte Carlo · Kelly</div>
-      </a>
+    <!-- Quick actions -->
+    <div class="grid grid-cols-3 gap-3 animate-fade-up delay-4">
+      {#each [{ href: "/log", emoji: "📝", label: "Log Trade", sub: "NSE · BSE · MCX" }, { href: "/analytics", emoji: "🧠", label: "AI Coach", sub: "Gemma 3 27B" }, { href: "/advanced-analytics", emoji: "🔬", label: "Advanced", sub: "Sharpe · Kelly" }] as q}
+        <a
+          href={q.href}
+          class="card p-3 flex flex-col gap-1 transition-all duration-150 cursor-pointer"
+          style="text-decoration: none"
+          onmouseenter={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor =
+              "rgba(59,130,246,0.3)";
+          }}
+          onmouseleave={(e) => {
+            (e.currentTarget as HTMLElement).style.borderColor =
+              "var(--border)";
+          }}
+        >
+          <span class="text-xl">{q.emoji}</span>
+          <span class="text-xs font-semibold" style="color: var(--text)"
+            >{q.label}</span
+          >
+          <span class="text-xs" style="color: var(--text3)">{q.sub}</span>
+        </a>
+      {/each}
     </div>
   {/if}
 </div>

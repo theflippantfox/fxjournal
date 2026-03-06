@@ -435,13 +435,13 @@
 
 <div class="p-6">
   <div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold text-white">Trade Log</h1>
+    <h1 class="text-2xl font-bold [color:var(--text)]">Trade Log</h1>
     <div class="flex items-center gap-3">
       <!-- Market status -->
       <div
         class="flex items-center gap-2 text-xs px-3 py-1.5 rounded-full border {marketOpen
           ? 'bg-emerald-900/30 border-emerald-700/40 text-emerald-400'
-          : 'bg-gray-800 border-gray-700 text-gray-500'}"
+          : 'bg-gray-800 border-gray-700 [color:var(--text3)]'}"
       >
         <div
           class="w-1.5 h-1.5 rounded-full {marketOpen
@@ -465,13 +465,13 @@
             : ""}</span
         >
         <span
-          class="text-xs text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full"
+          class="text-xs [color:var(--text3)] border border-gray-700 px-2 py-0.5 rounded-full"
           >Floating P&L · live CMP · refreshes every 15s</span
         >
         <span
           class="ml-auto text-xs {marketOpen
             ? 'text-emerald-400'
-            : 'text-gray-500'}"
+            : '[color:var(--text3)]'}"
         >
           {marketOpen ? "● Market Open" : "○ Market Closed — prices delayed"}
         </span>
@@ -481,14 +481,16 @@
           {@const fp = floatingPnLMap[trade.id]}
           {@const lpr = livePrices[trade.symbol]}
           <div
-            class="bg-gray-900/60 rounded-xl p-3 border {fp
+            class="[background:var(--bg2)]/60 rounded-xl p-3 border {fp
               ? fp.pnl >= 0
                 ? 'border-emerald-800/40'
                 : 'border-red-800/40'
-              : 'border-gray-800'}"
+              : '[border-color:var(--border)]'}"
           >
             <div class="flex items-center justify-between mb-1">
-              <span class="font-bold text-white text-sm">{trade.symbol}</span>
+              <span class="font-bold [color:var(--text)] text-sm"
+                >{trade.symbol}</span
+              >
               <span
                 class="text-xs {trade.type === 'long'
                   ? 'text-emerald-400'
@@ -496,7 +498,7 @@
                 >{trade.type === "long" ? "▲ Long" : "▼ Short"}</span
               >
             </div>
-            <div class="text-xs text-gray-500 mb-2">
+            <div class="text-xs [color:var(--text3)] mb-2">
               Entry: {fmtPrice(trade.entry_price)}
               {#if (trade as any).leverage > 1}<span
                   class="ml-1 text-indigo-400">{(trade as any).leverage}x</span
@@ -505,13 +507,13 @@
             {#if fp && lpr}
               <div class="flex items-end justify-between">
                 <div>
-                  <div class="text-xs text-gray-500">CMP</div>
+                  <div class="text-xs [color:var(--text3)]">CMP</div>
                   <div class="text-sm font-semibold text-sky-300">
                     {fmtPrice(fp.cmp)}
                   </div>
                 </div>
                 <div class="text-right">
-                  <div class="text-xs text-gray-500">Floating P&L</div>
+                  <div class="text-xs [color:var(--text3)]">Floating P&L</div>
                   <div
                     class="font-bold text-base {fp.pnl >= 0
                       ? 'text-emerald-400'
@@ -531,15 +533,17 @@
                 </div>
               </div>
             {:else}
-              <div class="text-xs text-gray-600 italic">Fetching price...</div>
+              <div class="text-xs [color:var(--text3)] italic">
+                Fetching price...
+              </div>
             {/if}
           </div>
         {/each}
       </div>
       <div
-        class="mt-3 pt-3 border-t border-gray-800 flex items-center justify-between"
+        class="mt-3 pt-3 border-t [border-color:var(--border)] flex items-center justify-between"
       >
-        <span class="text-sm text-gray-400">Total Floating P&L</span>
+        <span class="text-sm [color:var(--text2)]">Total Floating P&L</span>
         <span
           class="text-lg font-bold {totalLivePnL >= 0
             ? 'text-emerald-400'
@@ -588,10 +592,10 @@
 
   <!-- Table -->
   {#if loading}
-    <div class="text-center py-20 text-gray-500">Loading trades...</div>
+    <div class="text-center py-20 [color:var(--text3)]">Loading trades...</div>
   {:else if filteredTrades.length === 0}
     <div class="card text-center py-12">
-      <p class="text-gray-400 mb-4">
+      <p class="[color:var(--text2)] mb-4">
         {trades.length === 0
           ? "No trades yet. Log your first trade!"
           : "No trades match these filters."}
@@ -604,7 +608,7 @@
     <div class="card p-0 overflow-hidden">
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
-          <thead class="bg-gray-800/50 border-b border-gray-800">
+          <thead class="bg-gray-800/50 border-b [border-color:var(--border)]">
             <tr>
               <th class="table-header px-4 py-3 text-left">Symbol</th>
               <th class="table-header px-4 py-3 text-left">Dir.</th>
@@ -625,13 +629,15 @@
               {@const displayPnl = fp ? fp.pnl : trade.net_pnl}
               {@const displayCmp = fp ? fp.cmp : trade.exit_price}
               <tr
-                class="border-b border-gray-800/50 hover:bg-gray-800/20 transition-colors {trade.status ===
+                class="border-b [border-color:var(--border)]/50 hover:bg-gray-800/20 transition-colors {trade.status ===
                 'open'
                   ? 'bg-sky-950/10'
                   : ''}"
               >
                 <td class="px-4 py-3">
-                  <div class="font-semibold text-gray-200">{trade.symbol}</div>
+                  <div class="font-semibold [color:var(--text)]">
+                    {trade.symbol}
+                  </div>
                   {#if trade.status === "open" && lpr}
                     <div
                       class="text-xs {lpr.changePct >= 0
@@ -653,7 +659,7 @@
                     {trade.type === "long" ? "▲ Long" : "▼ Short"}
                   </span>
                 </td>
-                <td class="px-4 py-3 text-right text-gray-300"
+                <td class="px-4 py-3 text-right [color:var(--text2)]"
                   >{fmtPrice(trade.entry_price)}</td
                 >
                 <td class="px-4 py-3 text-right">
@@ -664,17 +670,17 @@
                       </div>
                       <div class="text-xs text-sky-600">CMP</div>
                     {:else}
-                      <div class="text-gray-600 text-xs italic">
+                      <div class="[color:var(--text3)] text-xs italic">
                         fetching...
                       </div>
                     {/if}
                   {:else if trade.exit_price}
-                    <div class="text-gray-300">
+                    <div class="[color:var(--text2)]">
                       {fmtPrice(trade.exit_price)}
                     </div>
-                    <div class="text-xs text-gray-600">exit</div>
+                    <div class="text-xs [color:var(--text3)]">exit</div>
                   {:else}
-                    <span class="text-gray-600">—</span>
+                    <span class="[color:var(--text3)]">—</span>
                   {/if}
                 </td>
                 <td class="px-4 py-3 text-right">
@@ -685,7 +691,7 @@
                     <div class="text-xs text-sky-500 font-medium">floating</div>
                   {/if}
                 </td>
-                <td class="px-4 py-3 text-center text-gray-400"
+                <td class="px-4 py-3 text-center [color:var(--text2)]"
                   >{trade.actual_rr?.toFixed(1) ?? "—"}</td
                 >
                 <td class="px-4 py-3 text-center">
@@ -698,21 +704,21 @@
                     <span class="badge-{trade.outcome}">{trade.outcome}</span>
                   {/if}
                 </td>
-                <td class="px-4 py-3 text-center text-xs text-gray-500"
+                <td class="px-4 py-3 text-center text-xs [color:var(--text3)]"
                   >{trade.emotion}</td
                 >
-                <td class="px-4 py-3 text-gray-500 text-xs"
+                <td class="px-4 py-3 [color:var(--text3)] text-xs"
                   >{trade.entry_date?.slice(0, 10)}</td
                 >
                 <td class="px-4 py-3">
                   <div class="flex items-center justify-center gap-2">
                     <button
-                      class="text-gray-500 hover:text-sky-400 transition-colors"
+                      class="[color:var(--text3)] hover:text-sky-400 transition-colors"
                       onclick={() => editTrade(trade)}
                       title="Edit">✏️</button
                     >
                     <button
-                      class="text-gray-500 hover:text-purple-400 transition-colors"
+                      class="[color:var(--text3)] hover:text-purple-400 transition-colors"
                       onclick={() => {
                         editTrade(trade);
                         setTimeout(() => analyzeTrade(trade), 100);
@@ -720,7 +726,7 @@
                       title="AI Analysis">✨</button
                     >
                     <button
-                      class="text-gray-500 hover:text-red-400 transition-colors"
+                      class="[color:var(--text3)] hover:text-red-400 transition-colors"
                       onclick={() => deleteTrade(trade.id)}
                       title="Delete">🗑️</button
                     >
@@ -732,10 +738,10 @@
         </table>
       </div>
       <div
-        class="px-4 py-2 border-t border-gray-800 text-xs text-gray-500 flex items-center justify-between"
+        class="px-4 py-2 border-t [border-color:var(--border)] text-xs [color:var(--text3)] flex items-center justify-between"
       >
         <span>Showing {filteredTrades.length} of {trades.length} trades</span>
-        <span class="text-gray-600"
+        <span class="[color:var(--text3)]"
           >Live prices via Yahoo Finance · 15s refresh</span
         >
       </div>
@@ -751,13 +757,13 @@
   >
     <div class="modal max-w-4xl">
       <div
-        class="flex items-center justify-between px-6 py-4 border-b border-gray-800"
+        class="flex items-center justify-between px-6 py-4 border-b [border-color:var(--border)]"
       >
-        <h2 class="text-lg font-semibold text-white">
+        <h2 class="text-lg font-semibold [color:var(--text)]">
           {editingTrade.id ? "Edit Trade" : "New Trade"}
         </h2>
         <button
-          class="text-gray-500 hover:text-gray-300 text-xl"
+          class="[color:var(--text3)] hover:[color:var(--text2)] text-xl"
           onclick={() => (showModal = false)}>✕</button
         >
       </div>
@@ -770,7 +776,7 @@
               <!-- Search input -->
               <div class="relative">
                 <span
-                  class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"
+                  class="absolute left-3 top-1/2 -translate-y-1/2 [color:var(--text3)] text-sm"
                   >🔍</span
                 >
                 <input
@@ -792,12 +798,12 @@
                 />
                 {#if instrSearchLoading}
                   <span
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs animate-pulse"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 [color:var(--text3)] text-xs animate-pulse"
                     >...</span
                   >
                 {:else if instrSearchQuery}
                   <button
-                    class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-600 hover:text-gray-400 text-sm"
+                    class="absolute right-3 top-1/2 -translate-y-1/2 [color:var(--text3)] hover:[color:var(--text2)] text-sm"
                     onclick={() => {
                       instrSearchQuery = "";
                       instrSearchResults = [];
@@ -816,11 +822,11 @@
               <!-- Dropdown results -->
               {#if instrSearchFocused && instrSearchResults.length > 0}
                 <div
-                  class="absolute z-50 top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
+                  class="absolute z-50 top-full left-0 right-0 mt-1 [background:var(--bg2)] border border-gray-700 rounded-xl shadow-2xl overflow-hidden"
                 >
                   {#each instrSearchResults as result}
                     <button
-                      class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors text-left border-b border-gray-800 last:border-0"
+                      class="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-800 transition-colors text-left border-b [border-color:var(--border)] last:border-0"
                       onclick={() => selectInstrumentFromSearch(result)}
                     >
                       <!-- Exchange badge -->
@@ -834,26 +840,28 @@
                               ? 'bg-yellow-900/60 text-yellow-300'
                               : result.exchange === 'Crypto'
                                 ? 'bg-purple-900/60 text-purple-300'
-                                : 'bg-gray-800 text-gray-400'}"
+                                : 'bg-gray-800 [color:var(--text2)]'}"
                       >
                         {result.exchange}
                       </span>
                       <!-- Symbol + name -->
                       <div class="flex-1 min-w-0">
-                        <div class="font-semibold text-white text-sm">
+                        <div class="font-semibold [color:var(--text)] text-sm">
                           {result.symbol}
                         </div>
-                        <div class="text-xs text-gray-400 truncate">
+                        <div class="text-xs [color:var(--text2)] truncate">
                           {result.name}
                         </div>
                       </div>
                       <!-- Type + currency -->
                       <div class="flex-shrink-0 text-right">
-                        <div class="text-xs text-gray-500">{result.type}</div>
+                        <div class="text-xs [color:var(--text3)]">
+                          {result.type}
+                        </div>
                         <div
                           class="text-xs font-medium {result.currency === 'INR'
                             ? 'text-orange-400'
-                            : 'text-gray-400'}"
+                            : '[color:var(--text2)]'}"
                         >
                           {result.currency === "INR"
                             ? "₹ INR"
@@ -868,7 +876,7 @@
               <!-- No results hint -->
               {#if instrSearchFocused && instrSearchQuery.length >= 2 && !instrSearchLoading && instrSearchResults.length === 0}
                 <div
-                  class="absolute z-50 top-full left-0 right-0 mt-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-gray-500 shadow-2xl"
+                  class="absolute z-50 top-full left-0 right-0 mt-1 [background:var(--bg2)] border border-gray-700 rounded-xl px-4 py-3 text-sm [color:var(--text3)] shadow-2xl"
                 >
                   No results for "{instrSearchQuery}" — try a different symbol
                   or company name
@@ -883,7 +891,9 @@
                   class="bg-sky-900/30 border border-sky-800/40 text-sky-300 px-2 py-1 rounded-lg font-medium"
                   >{editingTrade.symbol}</span
                 >
-                <span class="text-gray-500">{selectedInstrumentName}</span>
+                <span class="[color:var(--text3)]"
+                  >{selectedInstrumentName}</span
+                >
               </div>
             {/if}
 
@@ -891,7 +901,7 @@
             {#if editingTrade.symbol && livePrices[editingTrade.symbol]}
               {@const lpr = livePrices[editingTrade.symbol]}
               <div class="mt-1.5 flex items-center gap-3 text-xs">
-                <span class="text-gray-500">Live CMP:</span>
+                <span class="[color:var(--text3)]">Live CMP:</span>
                 <span class="text-sky-400 font-semibold"
                   >{fmtPrice(lpr.price)}</span
                 >
@@ -989,7 +999,7 @@
             <span class="text-indigo-400 font-semibold text-sm"
               >⚡ Leverage & Margin</span
             >
-            <span class="text-xs text-gray-500"
+            <span class="text-xs [color:var(--text3)]"
               >(Indian brokers: up to 5x on stocks, higher on F&O)</span
             >
           </div>
@@ -1001,8 +1011,8 @@
                   <button
                     class="flex-1 py-1.5 rounded-lg text-xs font-bold border transition-colors
                       {(editingTrade as any).leverage === lv
-                      ? 'bg-indigo-700 border-indigo-500 text-white'
-                      : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-indigo-600'}"
+                      ? 'bg-indigo-700 border-indigo-500 [color:var(--text)]'
+                      : 'bg-gray-800 border-gray-700 [color:var(--text2)] hover:border-indigo-600'}"
                     onclick={() => {
                       (editingTrade as any).leverage = lv;
                       recalculate();
@@ -1030,7 +1040,9 @@
             </div>
             <div>
               <label class="label">Position Value (Notional)</label>
-              <div class="input bg-gray-800/50 text-gray-300 font-medium">
+              <div
+                class="input bg-gray-800/50 [color:var(--text2)] font-medium"
+              >
                 {fmtInr(
                   (editingTrade.quantity ?? 0) *
                     (editingTrade.entry_price ?? 0),
@@ -1067,7 +1079,9 @@
 
         <!-- Costs -->
         <div>
-          <h3 class="font-medium text-gray-400 text-sm mb-2">Charges (₹)</h3>
+          <h3 class="font-medium [color:var(--text2)] text-sm mb-2">
+            Charges (₹)
+          </h3>
           <div class="grid grid-cols-3 gap-4">
             <div>
               <label class="label">Brokerage</label><input
@@ -1104,7 +1118,7 @@
           class="bg-gray-800/40 rounded-xl p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm"
         >
           <div>
-            <div class="text-gray-500 text-xs mb-1">Gross P&L</div>
+            <div class="[color:var(--text3)] text-xs mb-1">Gross P&L</div>
             <div
               class="font-semibold {(editingTrade.gross_pnl ?? 0) >= 0
                 ? 'text-emerald-400'
@@ -1116,7 +1130,7 @@
             </div>
           </div>
           <div>
-            <div class="text-gray-500 text-xs mb-1">Net P&L</div>
+            <div class="[color:var(--text3)] text-xs mb-1">Net P&L</div>
             <div
               class="font-semibold {(editingTrade.net_pnl ?? 0) >= 0
                 ? 'text-emerald-400'
@@ -1128,20 +1142,22 @@
             </div>
           </div>
           <div>
-            <div class="text-gray-500 text-xs mb-1">Expected R:R</div>
+            <div class="[color:var(--text3)] text-xs mb-1">Expected R:R</div>
             <div class="font-semibold text-sky-400">
               {editingTrade.expected_rr?.toFixed(2) ?? "0"}
             </div>
           </div>
           <div>
-            <div class="text-gray-500 text-xs mb-1">Actual R:R</div>
+            <div class="[color:var(--text3)] text-xs mb-1">Actual R:R</div>
             <div class="font-semibold text-sky-400">
               {editingTrade.actual_rr?.toFixed(2) ?? "0"}
             </div>
           </div>
           {#if ((editingTrade as any).leverage ?? 1) > 1}
             <div>
-              <div class="text-gray-500 text-xs mb-1">Return on Margin</div>
+              <div class="[color:var(--text3)] text-xs mb-1">
+                Return on Margin
+              </div>
               <div
                 class="font-semibold {(editingTrade.net_pnl ?? 0) >= 0
                   ? 'text-emerald-400'
@@ -1157,7 +1173,7 @@
               </div>
             </div>
             <div>
-              <div class="text-gray-500 text-xs mb-1">Leverage Used</div>
+              <div class="[color:var(--text3)] text-xs mb-1">Leverage Used</div>
               <div class="font-semibold text-indigo-400">
                 {(editingTrade as any).leverage}x
               </div>
@@ -1235,13 +1251,15 @@
             class="w-4 h-4 rounded"
             bind:checked={editingTrade.followed_plan}
           />
-          <span class="text-gray-300 font-medium">Followed Trading Plan</span>
+          <span class="[color:var(--text2)] font-medium"
+            >Followed Trading Plan</span
+          >
         </label>
 
         <!-- Checklist -->
         {#if selectedStrategy?.checklist_items?.length}
           <div>
-            <h3 class="font-medium text-gray-300 mb-3">
+            <h3 class="font-medium [color:var(--text2)] mb-3">
               Checklist <span class="text-sky-400 text-sm"
                 >{checklistProgress}</span
               >
@@ -1265,13 +1283,15 @@
                       })}
                   />
                   <div>
-                    <span class="text-gray-300 text-sm">{item.text}</span>
+                    <span class="[color:var(--text2)] text-sm">{item.text}</span
+                    >
                     <span
                       class="ml-2 badge {item.category === 'pre-trade'
                         ? 'bg-blue-900/40 text-blue-400'
                         : item.category === 'during-trade'
                           ? 'bg-yellow-900/40 text-yellow-400'
-                          : 'bg-gray-800 text-gray-400'}">{item.category}</span
+                          : 'bg-gray-800 [color:var(--text2)]'}"
+                      >{item.category}</span
                     >
                     {#if item.required}<span class="text-red-400 text-xs ml-1"
                         >*required</span
@@ -1321,17 +1341,17 @@
             class="bg-gray-800/60 rounded-xl p-6 border border-purple-800/30 text-center"
           >
             <div class="text-2xl mb-2 animate-pulse">🧠</div>
-            <div class="text-sm text-gray-300 font-medium">
+            <div class="text-sm [color:var(--text2)] font-medium">
               Gemini is analysing this trade...
             </div>
-            <div class="text-xs text-gray-500 mt-1">
+            <div class="text-xs [color:var(--text3)] mt-1">
               Reading strategy rules, checklist, risk management, and your
               trading history
             </div>
           </div>
         {:else if analysisResult}
           <div
-            class="bg-gray-900/80 rounded-xl border border-purple-800/30 overflow-hidden"
+            class="[background:var(--bg2)]/80 rounded-xl border border-purple-800/30 overflow-hidden"
           >
             <!-- Header: Score + Summary -->
             <div
@@ -1350,7 +1370,7 @@
                   >
                     {analysisResult.score}
                   </div>
-                  <div class="text-lg font-bold text-gray-300">
+                  <div class="text-lg font-bold [color:var(--text2)]">
                     {analysisResult.grade ?? ""}
                   </div>
                 </div>
@@ -1358,7 +1378,7 @@
                   <div class="text-xs font-semibold text-purple-400 mb-1">
                     🧠 AI DEEP ANALYSIS
                   </div>
-                  <p class="text-sm text-gray-200 leading-relaxed">
+                  <p class="text-sm [color:var(--text)] leading-relaxed">
                     {analysisResult.summary}
                   </p>
                 </div>
@@ -1367,12 +1387,14 @@
 
             <!-- Section scores -->
             <div
-              class="grid grid-cols-5 divide-x divide-gray-800 border-b border-gray-800"
+              class="grid grid-cols-5 divide-x divide-gray-800 border-b [border-color:var(--border)]"
             >
               {#each [{ label: "Strategy", key: "strategy_compliance" }, { label: "Checklist", key: "checklist_analysis" }, { label: "Risk", key: "risk_management" }, { label: "Execution", key: "execution" }, { label: "Psychology", key: "psychology" }] as section}
                 {@const s = analysisResult[section.key]?.score ?? 0}
                 <div class="px-3 py-2 text-center">
-                  <div class="text-xs text-gray-500 mb-1">{section.label}</div>
+                  <div class="text-xs [color:var(--text3)] mb-1">
+                    {section.label}
+                  </div>
                   <div
                     class="text-base font-bold {s >= 75
                       ? 'text-emerald-400'
@@ -1391,16 +1413,18 @@
               {#if analysisResult.strategy_compliance}
                 {@const sc = analysisResult.strategy_compliance}
                 <div>
-                  <div class="text-xs font-semibold text-gray-400 mb-2">
+                  <div class="text-xs font-semibold [color:var(--text2)] mb-2">
                     📋 STRATEGY COMPLIANCE
                   </div>
-                  <p class="text-xs text-gray-400 mb-2 italic">{sc.verdict}</p>
+                  <p class="text-xs [color:var(--text2)] mb-2 italic">
+                    {sc.verdict}
+                  </p>
                   {#if sc.followed?.length}
                     <div class="space-y-1 mb-2">
                       {#each sc.followed as r}
                         <div class="flex gap-2 text-xs">
                           <span class="text-emerald-400 flex-shrink-0">✓</span
-                          ><span class="text-gray-300">{r}</span>
+                          ><span class="[color:var(--text2)]">{r}</span>
                         </div>
                       {/each}
                     </div>
@@ -1410,7 +1434,7 @@
                       {#each sc.violated as r}
                         <div class="flex gap-2 text-xs">
                           <span class="text-red-400 flex-shrink-0">✗</span><span
-                            class="text-gray-300">{r}</span
+                            class="[color:var(--text2)]">{r}</span
                           >
                         </div>
                       {/each}
@@ -1423,28 +1447,28 @@
               {#if analysisResult.risk_management}
                 {@const rm = analysisResult.risk_management}
                 <div class="bg-gray-800/40 rounded-lg p-3">
-                  <div class="text-xs font-semibold text-gray-400 mb-2">
+                  <div class="text-xs font-semibold [color:var(--text2)] mb-2">
                     ⚖️ RISK MANAGEMENT
                   </div>
                   <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                     <div>
-                      <span class="text-gray-500">Stop: </span><span
-                        class="text-gray-300">{rm.stop_quality}</span
+                      <span class="[color:var(--text3)]">Stop: </span><span
+                        class="[color:var(--text2)]">{rm.stop_quality}</span
                       >
                     </div>
                     <div>
-                      <span class="text-gray-500">Leverage: </span><span
-                        class="text-gray-300">{rm.leverage_verdict}</span
+                      <span class="[color:var(--text3)]">Leverage: </span><span
+                        class="[color:var(--text2)]">{rm.leverage_verdict}</span
                       >
                     </div>
                     <div>
-                      <span class="text-gray-500">Sizing: </span><span
-                        class="text-gray-300">{rm.sizing_verdict}</span
+                      <span class="[color:var(--text3)]">Sizing: </span><span
+                        class="[color:var(--text2)]">{rm.sizing_verdict}</span
                       >
                     </div>
                     <div>
-                      <span class="text-gray-500">R:R: </span><span
-                        class="text-gray-300">{rm.rr_verdict}</span
+                      <span class="[color:var(--text3)]">R:R: </span><span
+                        class="[color:var(--text2)]">{rm.rr_verdict}</span
                       >
                     </div>
                   </div>
@@ -1454,7 +1478,7 @@
               <!-- Checklist misses -->
               {#if analysisResult.checklist_analysis?.critical_misses?.length}
                 <div>
-                  <div class="text-xs font-semibold text-gray-400 mb-2">
+                  <div class="text-xs font-semibold [color:var(--text2)] mb-2">
                     ⚠️ CHECKLIST — CRITICAL MISSES
                   </div>
                   <div class="space-y-1">
@@ -1463,7 +1487,7 @@
                         class="flex gap-2 text-xs bg-red-900/10 border border-red-800/20 rounded px-2 py-1"
                       >
                         <span class="text-red-400 flex-shrink-0">✗</span>
-                        <span class="text-gray-300">{miss}</span>
+                        <span class="[color:var(--text2)]">{miss}</span>
                       </div>
                     {/each}
                   </div>
@@ -1479,9 +1503,9 @@
                   <div class="text-xs font-semibold text-indigo-400 mb-1">
                     🧠 PSYCHOLOGY — {ps.overall}
                   </div>
-                  <p class="text-xs text-gray-300">{ps.state_impact}</p>
+                  <p class="text-xs [color:var(--text2)]">{ps.state_impact}</p>
                   {#if ps.pattern_match && ps.pattern_match !== "none"}
-                    <p class="text-xs text-gray-500 mt-1 italic">
+                    <p class="text-xs [color:var(--text3)] mt-1 italic">
                       Pattern: {ps.pattern_match}
                     </p>
                   {/if}
@@ -1499,14 +1523,15 @@
                   </div>
                   <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs mb-2">
                     <div>
-                      <span class="text-gray-500">Status: </span><span
-                        class="text-gray-200 font-medium"
+                      <span class="[color:var(--text3)]">Status: </span><span
+                        class="[color:var(--text)] font-medium"
                         >{opg.current_status}</span
                       >
                     </div>
                     <div>
-                      <span class="text-gray-500">Risk if held: </span><span
-                        class="text-red-400">{opg.risk_if_held}</span
+                      <span class="[color:var(--text3)]"
+                        >Risk if held:
+                      </span><span class="text-red-400">{opg.risk_if_held}</span
                       >
                     </div>
                   </div>
@@ -1514,7 +1539,9 @@
                     <span class="text-xs font-semibold text-sky-300"
                       >Action: {opg.action}</span
                     >
-                    <p class="text-xs text-gray-400 mt-0.5">{opg.reasoning}</p>
+                    <p class="text-xs [color:var(--text2)] mt-0.5">
+                      {opg.reasoning}
+                    </p>
                   </div>
                 </div>
               {/if}
@@ -1522,7 +1549,7 @@
               <!-- Insights -->
               {#if analysisResult.insights?.length}
                 <div>
-                  <div class="text-xs font-semibold text-gray-400 mb-2">
+                  <div class="text-xs font-semibold [color:var(--text2)] mb-2">
                     💡 INSIGHTS
                   </div>
                   <div class="space-y-2">
@@ -1543,13 +1570,15 @@
                               : "🚨"}</span
                         >
                         <div class="min-w-0">
-                          <div class="text-xs font-semibold text-gray-300">
+                          <div
+                            class="text-xs font-semibold [color:var(--text2)]"
+                          >
                             {ins.title}
-                            <span class="text-gray-600 font-normal"
+                            <span class="[color:var(--text3)] font-normal"
                               >[{ins.category}]</span
                             >
                           </div>
-                          <p class="text-xs text-gray-400 mt-0.5">
+                          <p class="text-xs [color:var(--text2)] mt-0.5">
                             {ins.detail}
                           </p>
                           <p class="text-xs text-purple-400 mt-1">
@@ -1567,7 +1596,7 @@
       </div>
 
       <div
-        class="flex items-center justify-between px-6 py-4 border-t border-gray-800"
+        class="flex items-center justify-between px-6 py-4 border-t [border-color:var(--border)]"
       >
         <div>
           {#if editingTrade.id}

@@ -175,23 +175,23 @@
   }
 </script>
 
-<div class="p-6 space-y-6">
-  <h1 class="text-2xl font-bold text-white">Settings</h1>
+<div class="page space-y-6">
+  <h1 class="text-2xl font-bold [color:var(--text)]">Settings</h1>
 
   <!-- Tabs -->
-  <div class="flex gap-2 border-b border-gray-800">
+  <div class="flex gap-2 border-b [border-color:var(--border)]">
     <button
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab ===
       'accounts'
         ? 'text-sky-400 border-b-2 border-sky-400'
-        : 'text-gray-500 hover:text-gray-300'}"
+        : '[color:var(--text3)] hover:[color:var(--text)]'}"
       onclick={() => (activeTab = "accounts")}>Accounts</button
     >
     <button
       class="px-4 py-2 text-sm font-medium transition-colors {activeTab ===
       'strategies'
         ? 'text-sky-400 border-b-2 border-sky-400'
-        : 'text-gray-500 hover:text-gray-300'}"
+        : '[color:var(--text3)] hover:[color:var(--text)]'}"
       onclick={() => (activeTab = "strategies")}>Strategies</button
     >
   </div>
@@ -212,8 +212,8 @@
         <div class="card">
           <div class="flex items-start justify-between mb-3">
             <div>
-              <h3 class="font-semibold text-white">{acc.name}</h3>
-              <p class="text-sm text-gray-500">
+              <h3 class="font-semibold [color:var(--text)]">{acc.name}</h3>
+              <p class="text-sm [color:var(--text3)]">
                 {acc.broker} · {acc.account_number}
               </p>
             </div>
@@ -229,22 +229,22 @@
                   ? 'bg-red-900/50 text-red-400 border border-red-800/40'
                   : acc.type === 'demo'
                     ? 'bg-sky-900/50 text-sky-400 border border-sky-800/40'
-                    : 'bg-gray-800 text-gray-400 border border-gray-700'}"
+                    : '[background:var(--surface)] [color:var(--text2)] border border-gray-700'}"
                 >{acc.type}</span
               >
             </div>
           </div>
           <div class="grid grid-cols-2 gap-2 text-sm mb-3">
             <div>
-              <span class="text-gray-500 text-xs block mb-0.5"
+              <span class="[color:var(--text3)] text-xs block mb-0.5"
                 >Initial Capital</span
               >
-              <span class="text-gray-300 font-medium"
+              <span class="[color:var(--text)] font-medium"
                 >{fmtBalance(acc.initial_balance, acc.currency)}</span
               >
             </div>
             <div>
-              <span class="text-gray-500 text-xs block mb-0.5"
+              <span class="[color:var(--text3)] text-xs block mb-0.5"
                 >Current Balance</span
               >
               <span
@@ -279,7 +279,7 @@
       {/each}
       {#if accountList.length === 0}
         <div class="card col-span-2 text-center py-12">
-          <p class="text-gray-400 mb-4">
+          <p class="[color:var(--text2)] mb-4">
             No accounts yet. Create your first account to start logging trades.
           </p>
           <button class="btn-primary" onclick={openNewAccount}
@@ -302,8 +302,8 @@
         <div class="card">
           <div class="flex items-start justify-between mb-2">
             <div>
-              <h3 class="font-semibold text-white">{strat.name}</h3>
-              <p class="text-sm text-gray-500">{strat.description}</p>
+              <h3 class="font-semibold [color:var(--text)]">{strat.name}</h3>
+              <p class="text-sm [color:var(--text3)]">{strat.description}</p>
             </div>
             <div class="flex items-center gap-2">
               <span class="text-sm text-sky-400"
@@ -312,12 +312,12 @@
               <span
                 class="badge {strat.active
                   ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-800/40'
-                  : 'bg-gray-800 text-gray-500 border border-gray-700'}"
+                  : '[background:var(--surface)] [color:var(--text3)] border border-gray-700'}"
                 >{strat.active ? "Active" : "Inactive"}</span
               >
             </div>
           </div>
-          <div class="text-xs text-gray-500 mb-3">
+          <div class="text-xs [color:var(--text3)] mb-3">
             {strat.checklist_items?.length ?? 0} checklist items
           </div>
           <div class="flex gap-2">
@@ -334,7 +334,7 @@
       {/each}
       {#if strategies.length === 0}
         <div class="card text-center py-12">
-          <p class="text-gray-400 mb-4">
+          <p class="[color:var(--text2)] mb-4">
             No strategies yet. Define your trading strategies with checklists.
           </p>
           <button class="btn-primary" onclick={openNewStrategy}
@@ -354,13 +354,13 @@
   >
     <div class="modal max-w-lg">
       <div
-        class="flex items-center justify-between px-6 py-4 border-b border-gray-800"
+        class="flex items-center justify-between px-6 py-4 border-b [border-color:var(--border)]"
       >
-        <h2 class="text-lg font-semibold text-white">
+        <h2 class="text-lg font-semibold [color:var(--text)]">
           {editingAccount.id ? "Edit Account" : "New Account"}
         </h2>
         <button
-          class="text-gray-500 hover:text-gray-300"
+          class="[color:var(--text3)] hover:[color:var(--text)]"
           onclick={() => (showAccountModal = false)}>✕</button
         >
       </div>
@@ -373,7 +373,7 @@
               class="flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-all
                 {editingAccount.currency === 'INR'
                 ? 'bg-orange-900/30 border-orange-600 text-orange-300'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+                : '[background:var(--surface)] border-gray-700 [color:var(--text2)] hover:border-gray-500'}"
               onclick={() =>
                 (editingAccount = {
                   ...editingAccount!,
@@ -387,7 +387,7 @@
               class="flex items-center justify-center gap-2 py-2.5 rounded-lg border text-sm font-medium transition-all
                 {editingAccount.currency !== 'INR'
                 ? 'bg-sky-900/30 border-sky-600 text-sky-300'
-                : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+                : '[background:var(--surface)] border-gray-700 [color:var(--text2)] hover:border-gray-500'}"
               onclick={() =>
                 (editingAccount = {
                   ...editingAccount!,
@@ -485,7 +485,7 @@
           </label>
           <div class="relative">
             <span
-              class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-medium"
+              class="absolute left-3 top-1/2 -translate-y-1/2 [color:var(--text3)] font-medium"
             >
               {editingAccount.currency === "INR"
                 ? "₹"
@@ -502,7 +502,7 @@
             />
           </div>
           {#if editingAccount.currency === "INR" && editingAccount.initial_balance}
-            <p class="text-xs text-gray-500 mt-1">
+            <p class="text-xs [color:var(--text3)] mt-1">
               = ₹{Number(editingAccount.initial_balance).toLocaleString(
                 "en-IN",
               )}
@@ -520,7 +520,7 @@
                   class="text-xs px-3 py-1.5 rounded-lg border transition-colors
                     {editingAccount.initial_balance === amt
                     ? 'bg-sky-900/40 border-sky-600 text-sky-300'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-500'}"
+                    : '[background:var(--surface)] border-gray-700 [color:var(--text2)] hover:border-gray-500'}"
                   onclick={() =>
                     (editingAccount = {
                       ...editingAccount!,
@@ -534,7 +534,9 @@
           </div>
         {/if}
       </div>
-      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+      <div
+        class="flex justify-end gap-3 px-6 py-4 border-t [border-color:var(--border)]"
+      >
         <button class="btn-secondary" onclick={() => (showAccountModal = false)}
           >Cancel</button
         >
@@ -552,13 +554,13 @@
   >
     <div class="modal max-w-2xl">
       <div
-        class="flex items-center justify-between px-6 py-4 border-b border-gray-800"
+        class="flex items-center justify-between px-6 py-4 border-b [border-color:var(--border)]"
       >
-        <h2 class="text-lg font-semibold text-white">
+        <h2 class="text-lg font-semibold [color:var(--text)]">
           {editingStrategy.id ? "Edit Strategy" : "New Strategy"}
         </h2>
         <button
-          class="text-gray-500 hover:text-gray-300"
+          class="[color:var(--text3)] hover:[color:var(--text)]"
           onclick={() => (showStrategyModal = false)}>✕</button
         >
       </div>
@@ -661,20 +663,23 @@
           <div class="space-y-2 mb-3">
             {#each editingStrategy.checklist_items ?? [] as item}
               <div
-                class="flex items-center gap-3 p-2 bg-gray-800/40 rounded-lg"
+                class="flex items-center gap-3 p-2 [background:var(--surface)]/40 rounded-lg"
               >
-                <span class="text-sm text-gray-300 flex-1">{item.text}</span>
+                <span class="text-sm [color:var(--text)] flex-1"
+                  >{item.text}</span
+                >
                 <span
                   class="badge text-xs {item.category === 'pre-trade'
                     ? 'bg-blue-900/40 text-blue-400'
                     : item.category === 'during-trade'
                       ? 'bg-yellow-900/40 text-yellow-400'
-                      : 'bg-gray-800 text-gray-400'}">{item.category}</span
+                      : '[background:var(--surface)] [color:var(--text2)]'}"
+                  >{item.category}</span
                 >
                 {#if item.required}<span class="text-red-400 text-xs">*req</span
                   >{/if}
                 <button
-                  class="text-gray-600 hover:text-red-400"
+                  class="[color:var(--text3)] hover:text-red-400"
                   onclick={() => removeChecklistItem(item.id)}>✕</button
                 >
               </div>
@@ -697,7 +702,7 @@
               <option value="post-trade">Post-trade</option>
             </select>
             <label
-              class="flex items-center gap-1 text-sm text-gray-400 cursor-pointer"
+              class="flex items-center gap-1 text-sm [color:var(--text2)] cursor-pointer"
             >
               <input type="checkbox" bind:checked={newChecklistItem.required} />
               Req.
@@ -711,10 +716,12 @@
 
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" bind:checked={editingStrategy.active} />
-          <span class="text-gray-300">Active strategy</span>
+          <span class="[color:var(--text)]">Active strategy</span>
         </label>
       </div>
-      <div class="flex justify-end gap-3 px-6 py-4 border-t border-gray-800">
+      <div
+        class="flex justify-end gap-3 px-6 py-4 border-t [border-color:var(--border)]"
+      >
         <button
           class="btn-secondary"
           onclick={() => (showStrategyModal = false)}>Cancel</button
