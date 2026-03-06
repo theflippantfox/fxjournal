@@ -20,6 +20,9 @@ importers:
       svelte-chartjs:
         specifier: ^3.1.5
         version: 3.1.5(chart.js@4.5.1)(svelte@5.53.7)
+      wrangler:
+        specifier: ^4.71.0
+        version: 4.71.0(@cloudflare/workers-types@4.20260305.1)
     devDependencies:
       '@sveltejs/adapter-cloudflare':
         specifier: ^7.2.8
