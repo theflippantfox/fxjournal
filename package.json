@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "pnpm run build && wrangler dev",
+    "gen": "wrangler types",
+    "deploy": "pnpm run build && wrangler deploy",
+    "cf-typegen": "wrangler types"
   },
   "devDependencies": {
-    "@sveltejs/adapter-cloudflare": "^7.2.8",
+    "@sveltejs/adapter-cloudflare": "^7.2.6",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "6.2.4",
     "autoprefixer": "^10.4.19",
@@ -16,7 +19,8 @@
     "svelte": "5.53.7",
     "tailwindcss": "^3.4.3",
     "typescript": "^5.4.5",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "wrangler": "^4.63.0"
   },
   "type": "module",
   "dependencies": {
@@ -24,7 +28,6 @@
     "@supabase/supabase-js": "^2.98.0",
     "chart.js": "^4.5.1",
     "chartjs": "^0.3.24",
-    "svelte-chartjs": "^3.1.5",
-    "wrangler": "^4.71.0"
+    "svelte-chartjs": "^3.1.5"
   }
 }
